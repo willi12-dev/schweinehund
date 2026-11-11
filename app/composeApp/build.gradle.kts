@@ -64,6 +64,8 @@ android {
         buildConfigField("String", "BAU", "\"$bauNummer\"")
         // Einladungslinks zeigen auf den Server – Android öffnet sie direkt in der App (REQ-002).
         manifestPlaceholders["einladungHost"] = einladungHost
+        // Nur 64-Bit-ARM (alle aktuellen Handys der Familie) – spart rund die Hälfte der App-Größe (Karte, Texterkennung).
+        ndk { abiFilters += "arm64-v8a" }
     }
     // Feste Testsignatur (nur für Test-Versionen, Passwort ist bewusst kein Geheimnis): so lässt sich jede neue
     // Test-App über die alte installieren. Für eine echte Veröffentlichung kommt ein eigener Schlüssel als Secret.
