@@ -12,6 +12,8 @@ val appVersion = rootProject.file("../VERSION").readText().trim()
 // Adresse des Servers – GitHub Actions setzt sie mit -PserverUrl=…; lokal der Emulator-Rechner.
 val bauNummer = (findProperty("bauNummer") as String?)?.takeIf { it.isNotBlank() } ?: "lokal"
 val serverUrl = (findProperty("serverUrl") as String?)?.takeIf { it.isNotBlank() } ?: "http://10.0.2.2:5000"
+// Rechnername des Servers für die Einladungslinks (https://<host>/e/CODE).
+val einladungHost = serverUrl.substringAfter("://").substringBefore("/").substringBefore(":")
 
 kotlin {
     androidTarget {
@@ -59,7 +61,7 @@ android {
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "BAU", "\"$bauNummer\"")
         // Einladungslinks zeigen auf den Server – Android öffnet sie direkt in der App (REQ-002).
-        manifestPlaceholders["einladungHost"] = java.net.URI(serverUrl).host ?: "localhost"
+        manifestPlaceholders["einladungHost"] = einladungHost
     }
     // Feste Testsignatur (nur für Test-Versionen, Passwort ist bewusst kein Geheimnis): so lässt sich jede neue
     // Test-App über die alte installieren. Für eine echte Veröffentlichung kommt ein eigener Schlüssel als Secret.
