@@ -5,3 +5,5 @@
   nummerierte Datenbank-Migrationen mit Sicherung, Push-Probe über Firebase,
   App-Gerüst (Kotlin Multiplatform, Android) mit Startseite „Server erreichbar“,
   GitHub Actions für Prüfen, App-Bau und TEST-Umgebung auf PythonAnywhere.
+- Test-App immer unter derselben Adresse: GitHub → Releases → „Test-Version“ → `schweinehund-test.apk`.
+- Anleitung `docs/anleitung-firebase.md` für die Push-Einrichtung.
