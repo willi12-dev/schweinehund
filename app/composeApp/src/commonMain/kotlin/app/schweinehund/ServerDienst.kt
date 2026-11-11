@@ -82,6 +82,27 @@ data class Woche(val name: String, val lkWert: Double, val lk: String)
 
 data class Bestwert(val titel: String, val wert: String, val wann: String)
 
+/** Sonntagsshow (REQ-005). */
+data class Preis(val titel: String, val zeichen: String, val text: String, val gewinner: List<String>, val wert: String)
+
+data class Wette(val text: String, val verlierer: List<String>)
+
+data class MonatsAufloesung(val titel: String, val zeilen: List<RangZeile>, val sieger: List<String>)
+
+data class ShowDaten(
+    val woche: String,
+    val titel: String,
+    val horst: Horst,
+    val preise: List<Preis>,
+    val zeilen: List<RangZeile>,
+    val memberOfWeek: List<String>,
+    val wette: Wette?,
+    val monat: MonatsAufloesung?,
+    val vorgezogen: Boolean,
+)
+
+data class RuhmEintrag(val woche: String, val titel: String, val memberOfWeek: List<String>, val memberOfMonth: List<String>, val monat: String?)
+
 data class Punktestand(
     val titel: String,
     val zeilen: List<RangZeile>,
@@ -231,6 +252,51 @@ fun einladungLesen(json: String, code: Int): Antwort<Einladung> =
 private fun JsonElement?.zahl(): Double = (this as? JsonPrimitive)?.doubleOrNull ?: 0.0
 private fun JsonElement?.ganz(): Int = (this as? JsonPrimitive)?.intOrNull ?: 0
 
+private fun JsonElement?.texte(): List<String> = (this as? JsonArray)?.mapNotNull { it.text() } ?: emptyList()
+
+fun rangZeileLesen(zo: JsonObject): RangZeile {
+    val m = zo["mitglied"]!!.jsonObject
+    return RangZeile(
+        platz = zo["platz"].ganz(),
+        mitglied = Mitglied(m["id"].zahl().toLong(), m["name"].text() ?: "?", m["farbe"].text() ?: "#8A94A6",
+            m["kuerzel"].text() ?: "?", "mitglied"),
+        lk = zo["lk"].text() ?: "0", km = zo["km"].text() ?: "0", hm = zo["hm"].ganz(), laeufe = zo["laeufe"].ganz(),
+    )
+}
+
+fun horstLesen(h: JsonObject) =
+    Horst(h["ziel"].text() ?: "40", h["ziel_wert"].zahl(), h["ist"].text() ?: "0", h["prozent"].ganz(), h["spruch"].text() ?: "")
+
+fun showDatenLesen(o: JsonObject): ShowDaten = ShowDaten(
+    woche = o["woche"].text() ?: "",
+    titel = o["titel"].text() ?: "",
+    horst = horstLesen(o["horst"]!!.jsonObject),
+    preise = (o["preise"] as? JsonArray)?.map { p ->
+        val po = p.jsonObject
+        Preis(po["titel"].text() ?: "", po["zeichen"].text() ?: "🏅", po["text"].text() ?: "", po["gewinner"].texte(), po["wert"].text() ?: "")
+    } ?: emptyList(),
+    zeilen = (o["zeilen"] as? JsonArray)?.map { rangZeileLesen(it.jsonObject) } ?: emptyList(),
+    memberOfWeek = o["member_of_week"].texte(),
+    wette = (o["wette"] as? JsonObject)?.let { Wette(it["text"].text() ?: "", it["verlierer"].texte()) },
+    monat = (o["monat"] as? JsonObject)?.let { m ->
+        MonatsAufloesung(m["titel"].text() ?: "", (m["zeilen"] as? JsonArray)?.map { rangZeileLesen(it.jsonObject) } ?: emptyList(),
+            m["sieger"].texte())
+    },
+    vorgezogen = (o["vorgezogen"] as? JsonPrimitive)?.booleanOrNull ?: false,
+)
+
+/** Aktuelle Show (kann fehlen) und der Text der Familienwette. */
+fun showLesen(json: String, code: Int): Antwort<Pair<ShowDaten?, String>> = auswerten(json, code) { o ->
+    (o["show"] as? JsonObject)?.let { showDatenLesen(it) } to (o["wette"].text() ?: "")
+}
+
+fun ruhmeshalleLesen(json: String, code: Int): Antwort<List<RuhmEintrag>> = auswerten(json, code) { o ->
+    o["shows"]!!.jsonArray.map {
+        val e = it.jsonObject
+        RuhmEintrag(e["woche"].text() ?: "", e["titel"].text() ?: "", e["member_of_week"].texte(), e["member_of_month"].texte(), e["monat"].text())
+    }
+}
+
 fun punktestandLesen(json: String, code: Int): Antwort<Punktestand> = auswerten(json, code) { o ->
     val r = o["rangliste"]!!.jsonObject
     val h = o["horst"]!!.jsonObject
@@ -240,17 +306,8 @@ fun punktestandLesen(json: String, code: Int): Antwort<Punktestand> = auswerten(
     val titel = mapOf("laengster" to "Längster Lauf", "hoechster" to "Meiste Höhenmeter", "schnellster_km" to "Schnellster Kilometer")
     Punktestand(
         titel = r["titel"].text() ?: "",
-        zeilen = r["zeilen"]!!.jsonArray.map { z ->
-            val zo = z.jsonObject
-            val m = zo["mitglied"]!!.jsonObject
-            RangZeile(
-                platz = zo["platz"].ganz(),
-                mitglied = Mitglied(m["id"].zahl().toLong(), m["name"].text() ?: "?", m["farbe"].text() ?: "#8A94A6",
-                    m["kuerzel"].text() ?: "?", "mitglied"),
-                lk = zo["lk"].text() ?: "0", km = zo["km"].text() ?: "0", hm = zo["hm"].ganz(), laeufe = zo["laeufe"].ganz(),
-            )
-        },
-        horst = Horst(h["ziel"].text() ?: "40", h["ziel_wert"].zahl(), h["ist"].text() ?: "0", h["prozent"].ganz(), h["spruch"].text() ?: ""),
+        zeilen = r["zeilen"]!!.jsonArray.map { rangZeileLesen(it.jsonObject) },
+        horst = horstLesen(h),
         fortschritt = (ich["fortschritt"] as? JsonArray)?.map { w ->
             val wo = w.jsonObject
             Woche(wo["woche"].text() ?: "", wo["lk_wert"].zahl(), wo["lk"].text() ?: "0")
@@ -360,6 +417,36 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
 
     suspend fun zielSetzen(lk: Double): Antwort<Boolean> = sicher {
         val (text, code) = client.post("$basis/api/familie/ziel") { json(this, buildJsonObject { put("lk", lk) }) }.text()
+        auswerten(text, code) { true }
+    }
+
+    suspend fun show(): Antwort<Pair<ShowDaten?, String>> = sicher {
+        val (text, code) = client.get("$basis/api/show") { anmelden() }.text()
+        showLesen(text, code)
+    }
+
+    suspend fun showHolen(woche: String): Antwort<ShowDaten> = sicher {
+        val (text, code) = client.get("$basis/api/show/$woche") { anmelden() }.text()
+        auswerten(text, code) { showDatenLesen(it["show"]!!.jsonObject) }
+    }
+
+    suspend fun ruhmeshalle(): Antwort<List<RuhmEintrag>> = sicher {
+        val (text, code) = client.get("$basis/api/shows") { anmelden() }.text()
+        ruhmeshalleLesen(text, code)
+    }
+
+    suspend fun showVorziehen(): Antwort<ShowDaten> = sicher {
+        val (text, code) = client.post("$basis/api/show/vorziehen") { json(this, buildJsonObject { }) }.text()
+        auswerten(text, code) { showDatenLesen(it["show"]!!.jsonObject) }
+    }
+
+    suspend fun wetteSetzen(einsatz: String): Antwort<String> = sicher {
+        val (text, code) = client.post("$basis/api/familie/wette") { json(this, buildJsonObject { put("text", einsatz) }) }.text()
+        auswerten(text, code) { it["wette"].text() ?: "" }
+    }
+
+    suspend fun pushMerken(token: String): Antwort<Boolean> = sicher {
+        val (text, code) = client.post("$basis/api/ich/push") { json(this, buildJsonObject { put("token", token) }) }.text()
         auswerten(text, code) { true }
     }
 

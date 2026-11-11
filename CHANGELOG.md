@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.6.0 (in Entwicklung)
+- REQ-005 Sonntagsshow: Sonntag 19 Uhr wird die Woche eingefroren und Karte für Karte enthüllt – Horsts Bilanz,
+  Sonderpreise (Bergziege, Frühaufsteher, Dauerläufer, Tempomacher, Comeback), Platz 3, Platz 2,
+  Member of the Week, Einsatz der Woche (Familienwette) und am Monatsende Member of the Month.
+- Push „Die Sonntagsshow ist da!“ an alle über eine tägliche Aufgabe auf PythonAnywhere (18:00 UTC).
+- Ruhmeshalle mit allen Shows; der Verwalter legt den Einsatz fest und kann die Show zum Testen vorziehen.
+- Datenbank-Änderung 9: Shows und Push-Schlüssel am Mitglied.
+
 ## v0.5.0 (in Entwicklung)
 - REQ-004 Punkte und Rangliste: Leistungskilometer (km + Höhenmeter ÷ 100), Rangliste Woche/Monat,
   Horst-o-Meter mit Familienziel (Start 40 LK, Verwalter ändert), eigener Fortschritt (8 Wochen),

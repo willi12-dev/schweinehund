@@ -140,4 +140,22 @@ class ServerDienstTest {
         assertEquals(1, p.serie)
         assertEquals("Längster Lauf", p.bestwerte.single().titel)
     }
+
+    @Test
+    fun showLesen() {
+        val json = """{"ok": true, "wette": "Letzter backt Kuchen", "show": {"woche": "2026-W46", "titel": "KW 46 · 09.11. – 15.11.",
+          "horst": {"ziel": "40", "ziel_wert": 40.0, "ist": "12,10", "prozent": 30, "spruch": "Horst wird unruhig."},
+          "preise": [{"titel": "Bergziege", "zeichen": "⛰️", "text": "meiste Höhenmeter", "gewinner": ["Testläufer A"], "wert": "72 m"}],
+          "zeilen": [{"mitglied": {"id": 2, "name": "Testläufer B", "farbe": "#5B8DEF", "kuerzel": "Te"}, "lk": "6,45", "km": "6,11", "hm": 34, "laeufe": 1, "platz": 1}],
+          "member_of_week": ["Testläufer B"], "wette": {"text": "Letzter backt Kuchen", "verlierer": ["Testläufer D"]},
+          "monat": null, "vorgezogen": true}}"""
+        val (show, wette) = showLesen(json, 200).wert!!
+        assertEquals("Letzter backt Kuchen", wette)
+        assertEquals(listOf("Testläufer B"), show!!.memberOfWeek)
+        assertEquals("Bergziege", show.preise.single().titel)
+        assertEquals(listOf("Testläufer D"), show.wette!!.verlierer)
+        assertNull(show.monat)
+        assertTrue(show.vorgezogen)
+        assertNull(showLesen("""{"ok": true, "show": null, "wette": ""}""", 200).wert!!.first)
+    }
 }

@@ -113,6 +113,11 @@ fun App(
     var bereich by remember { mutableStateOf(Bereich.Familie) }
     var zeitraum by remember { mutableStateOf("woche") }
     var punktestand by remember { mutableStateOf<Punktestand?>(null) }
+    var aktuelleShow by remember { mutableStateOf<ShowDaten?>(null) }
+    var offeneShow by remember { mutableStateOf<ShowDaten?>(null) }
+    var wette by remember { mutableStateOf("") }
+    var ruhm by remember { mutableStateOf<List<RuhmEintrag>>(emptyList()) }
+    var gesehen by remember { mutableStateOf(plattform.lesen("show_gesehen") ?: "") }
     val scope = rememberCoroutineScope()
 
     fun abmelden(grund: String) {
@@ -137,6 +142,8 @@ fun App(
         pruefen(server.familienLaeufe())?.let { familienLaeufe = it }
         person?.let { p -> pruefen(server.liste(p.id))?.let { personLaeufe = it } }
         pruefen(server.rangliste(zeitraum))?.let { punktestand = it }
+        pruefen(server.show())?.let { (s, w) -> aktuelleShow = s; wette = w }
+        pruefen(server.ruhmeshalle())?.let { ruhm = it }
     }
 
     fun angemeldet(a: Anmeldung) {
@@ -148,9 +155,21 @@ fun App(
         scope.launch { neuLaden() }
     }
 
+    fun showZeigen(s: ShowDaten) {
+        offeneShow = s
+        gesehen = s.woche
+        plattform.schreiben("show_gesehen", s.woche)
+    }
+
     LaunchedEffect(Unit) {
         zustand = server.status()
         if (zustand is ServerZustand.Erreichbar) neuLaden()
+    }
+
+    // Push-Schlüssel dieses Handys melden, damit die Sonntagsshow ankommt (REQ-005)
+    LaunchedEffect(schluessel) {
+        if (schluessel == null) return@LaunchedEffect
+        plattform.pushToken()?.let { server.pushMerken(it) }
     }
 
     LaunchedEffect(geteilt, schluessel) {
@@ -182,6 +201,7 @@ fun App(
                     einladungErledigt = einladungErledigt, meldung = meldung, angemeldet = { angemeldet(it) },
                     nochmal = { scope.launch { zustand = ServerZustand.Laedt; zustand = server.status() } },
                 )
+                offeneShow != null -> ShowSeite(offeneShow!!) { offeneShow = null }
                 offen != null -> LaufDetail(
                     lauf = offen, beschaeftigt = beschaeftigt, zurueck = { detail = null },
                     sichtbarkeit = { wert ->
@@ -215,6 +235,10 @@ fun App(
                                 colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Nochmal verbinden") }
                         }
                         if (meldung.isNotBlank()) Hinweis(meldung) { meldung = "" }
+                        val neueShow = aktuelleShow
+                        if (neueShow != null && neueShow.woche != gesehen && (bereich == Bereich.Familie || bereich == Bereich.Rangliste)) {
+                            ShowHinweis(neueShow) { showZeigen(neueShow) }
+                        }
                         when (bereich) {
                             Bereich.Familie -> FamilieSeite(
                                 familie = familie, beschaeftigt = beschaeftigt,
@@ -273,7 +297,8 @@ fun App(
                                     }
                                 },
                             )
-                            Bereich.Rangliste -> RanglisteSeite(
+                            Bereich.Rangliste -> {
+                                RanglisteSeite(
                                 stand = punktestand, zeitraum = zeitraum,
                                 verwalter = familie?.ich?.istVerwalter == true, beschaeftigt = beschaeftigt,
                                 zeitraumWaehlen = { z ->
@@ -289,7 +314,33 @@ fun App(
                                         beschaeftigt = false
                                     }
                                 },
-                            )
+                                )
+                                aktuelleShow?.let { s ->
+                                    if (s.woche == gesehen) OutlinedButton(onClick = { showZeigen(s) }) {
+                                        Text("🎬  Letzte Sonntagsshow ansehen", color = Farben.Tinte)
+                                    }
+                                }
+                                ShowBereich(
+                                    ruhm = ruhm, wette = wette, verwalter = familie?.ich?.istVerwalter == true,
+                                    beschaeftigt = beschaeftigt,
+                                    oeffnen = { woche -> scope.launch { pruefen(server.showHolen(woche))?.let { offeneShow = it } } },
+                                    wetteSetzen = { text ->
+                                        scope.launch {
+                                            beschaeftigt = true
+                                            pruefen(server.wetteSetzen(text))?.let { wette = it; meldung = if (it.isBlank()) "Einsatz entfernt." else "Einsatz festgelegt." }
+                                            beschaeftigt = false
+                                        }
+                                    },
+                                    vorziehen = {
+                                        scope.launch {
+                                            beschaeftigt = true
+                                            pruefen(server.showVorziehen())?.let { s -> aktuelleShow = s; showZeigen(s) }
+                                            pruefen(server.ruhmeshalle())?.let { ruhm = it }
+                                            beschaeftigt = false
+                                        }
+                                    },
+                                )
+                            }
                             Bereich.Ich -> IchSeite(
                                 ich = familie?.ich, appVersion = appVersion, beschaeftigt = beschaeftigt,
                                 standardWaehlen = { wert ->
