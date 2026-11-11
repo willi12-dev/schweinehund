@@ -5,7 +5,7 @@
 | REQ-000 | Infrastruktur: Repo, Tests, App-Bau, Server, Push, Deployment | umgesetzt | v0.1.0 |
 | REQ-001 | Datentest: Läufe per Teilen übernehmen (GPX, TCX, Bild, Health Connect) | umgesetzt | v0.2.0 |
 | REQ-002 | Grundgerüst: Anmeldung, Familienmitglieder, Navigation, Design „weiches Grau“ | in Entwicklung | v0.3.0 |
-| REQ-003 | Läufe und Karte: Lauf-Liste, Detailansicht, Privatzone, Sichtbarkeit pro Lauf | in Entwicklung | v0.4.0 |
+| REQ-003 | Läufe und Karte: Familien-Läufe, Detailansicht mit Karte, Sichtbarkeit pro Lauf | in Entwicklung | v0.4.0 |
 | REQ-004 | Punkte und Rangliste: Leistungskilometer (100 m Anstieg = 1 km), Fortschritt, Dranbleiben, Familienziel / Horst-o-Meter | geplant | v0.5.0 |
 | REQ-005 | Sonntagsshow: Member of the Week/Month, Sonderpreise (u. a. Bergziege), Einsatz der Woche | geplant | v0.6.0 |
 | REQ-006 | Chat, Reaktionen und Push-Nachrichten | geplant | v0.7.0 |
