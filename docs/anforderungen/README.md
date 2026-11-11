@@ -3,7 +3,7 @@
 | ID | Titel | Status | Version |
 |---|---|---|---|
 | REQ-000 | Infrastruktur: Repo, Tests, App-Bau, Server, Push, Deployment | umgesetzt | v0.1.0 |
-| REQ-001 | Datentest: Läufe per Teilen übernehmen (GPX, TCX, Bild, Health Connect) | in Entwicklung | v0.2.0 |
+| REQ-001 | Datentest: Läufe per Teilen übernehmen (GPX, TCX, Bild, Health Connect) | umgesetzt | v0.2.0 |
 | REQ-002 | Grundgerüst: Anmeldung, Familienmitglieder, Navigation, Design „weiches Grau“ | geplant | v0.3.0 |
 | REQ-003 | Läufe und Karte: Lauf-Liste, Detailansicht, Privatzone, Sichtbarkeit pro Lauf | geplant | v0.4.0 |
 | REQ-004 | Punkte und Rangliste: Leistungskilometer (100 m Anstieg = 1 km), Fortschritt, Dranbleiben, Familienziel / Horst-o-Meter | geplant | v0.5.0 |
