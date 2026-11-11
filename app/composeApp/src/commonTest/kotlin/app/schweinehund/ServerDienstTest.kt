@@ -57,4 +57,11 @@ class ServerDienstTest {
         assertTrue(GeteilteDatei("x", "image/jpeg", ByteArray(0)).istBild)
         assertTrue(!GeteilteDatei("20260601Laufen (Outdoor).gpx", "application/octet-stream", ByteArray(0)).istBild)
     }
+
+    @Test
+    fun tausenderpunkt() {
+        assertEquals("6.280", tausender(6280))
+        assertEquals("83", tausender(83))
+        assertEquals("12.345.678", tausender(12345678))
+    }
 }

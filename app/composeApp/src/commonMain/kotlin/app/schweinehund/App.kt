@@ -335,7 +335,7 @@ private fun LaufDetail(lauf: LaufAnzeige, zurueck: () -> Unit) {
         Text(lauf.startText, color = Farben.Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 40.sp)
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }).joinToString("  ·  "), color = Farben.Tinte, fontSize = 16.sp)
-        val extra = listOfNotNull(lauf.puls?.let { "Puls Ø $it" }, lauf.kadenz?.let { "Kadenz $it" }, lauf.schritte?.let { "$it Schritte" })
+        val extra = listOfNotNull(lauf.puls?.let { "Puls Ø $it" }, lauf.kadenz?.let { "Kadenz $it" }, lauf.schritte?.let { "${tausender(it)} Schritte" })
         if (extra.isNotEmpty()) Text(extra.joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
         if (lauf.linie.size >= 2) {
             Strecke(lauf.linie, Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(22.dp)).background(Farben.Weiss))
@@ -376,3 +376,7 @@ fun Strecke(linie: List<Pair<Float, Float>>, modifier: Modifier) {
         drawCircle(Farben.Schiefer, radius = 6.dp.toPx(), center = Offset(ox + sx * s, oy + sy * s))
     }
 }
+
+
+/** Ganze Zahl mit deutschem Tausenderpunkt: 6280 → „6.280“. */
+fun tausender(n: Int): String = n.toString().reversed().chunked(3).joinToString(".").reversed()
