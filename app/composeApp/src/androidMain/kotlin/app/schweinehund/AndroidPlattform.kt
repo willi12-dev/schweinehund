@@ -141,10 +141,20 @@ class AndroidPlattform(
 class PushEmpfang : FirebaseMessagingService() {
     override fun onMessageReceived(nachricht: RemoteMessage) {
         val n = nachricht.notification ?: return
+        // Antippen öffnet die App an der passenden Stelle (REQ-006: Chat, Lauf, Rangliste)
+        val oeffnen = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            nachricht.data.forEach { (k, v) -> putExtra(k, v) }
+        }
+        val absicht = android.app.PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), oeffnen,
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val anzeige = Notification.Builder(this, MainActivity.KANAL_FAMILIE)
             .setSmallIcon(R.drawable.ic_benachrichtigung)
             .setContentTitle(n.title ?: "Schweinehund")
             .setContentText(n.body ?: "")
+            .setContentIntent(absicht)
             .setAutoCancel(true)
             .build()
         getSystemService(NotificationManager::class.java).notify(System.currentTimeMillis().toInt(), anzeige)

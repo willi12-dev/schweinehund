@@ -158,4 +158,24 @@ class ServerDienstTest {
         assertTrue(show.vorgezogen)
         assertNull(showLesen("""{"ok": true, "show": null, "wette": ""}""", 200).wert!!.first)
     }
+
+    @Test
+    fun chatUndReaktionenLesen() {
+        val json = """{"ok": true, "ungelesen": 1, "nachrichten": [
+            {"id": 5, "text": "Testläufer B ist 6,11 km gelaufen.", "horst": true, "absender": null, "eigen": false, "lauf_id": 12, "zeit_text": "10.11. 10:30"},
+            {"id": 6, "text": "Stark!", "horst": false, "absender": {"id": 1, "name": "Testläufer A", "farbe": "#EF7448", "kuerzel": "Te"},
+             "eigen": true, "lauf_id": null, "zeit_text": "10.11. 10:31"}]}"""
+        val (liste, ungelesen) = chatLesen(json, 200).wert!!
+        assertEquals(1, ungelesen)
+        assertTrue(liste[0].horst && liste[0].absender == null)
+        assertEquals(12L, liste[0].laufId)
+        assertNull(liste[1].laufId)
+        assertEquals("Testläufer A", liste[1].absender!!.name)
+        val r = reaktionenLesen(kotlinx.serialization.json.Json.parseToJsonElement(
+            """[{"emoji": "🔥", "anzahl": 2, "ich": true, "namen": ["A", "B"]}]"""))
+        assertEquals(2, r.single().anzahl)
+        assertTrue(r.single().ich)
+        assertEquals(mapOf("chat" to false, "lauf" to true), pushArtenLesen(kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"chat": false, "lauf": true}""")))
+    }
 }

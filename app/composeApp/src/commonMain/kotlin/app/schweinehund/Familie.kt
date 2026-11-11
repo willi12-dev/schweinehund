@@ -347,6 +347,8 @@ fun IchSeite(
     ich: Mitglied?,
     appVersion: String,
     beschaeftigt: Boolean,
+    pushArten: Map<String, Boolean>,
+    pushUmschalten: (String, Boolean) -> Unit,
     standardWaehlen: (String) -> Unit,
     farbeWaehlen: (String) -> Unit,
     testPush: () -> Unit,
@@ -380,6 +382,7 @@ fun IchSeite(
             SichtbarkeitWahl(ich.standardSichtbarkeit, !beschaeftigt, standardWaehlen)
         }
     }
+    if (ich != null) PushEinstellungen(pushArten, !beschaeftigt, pushUmschalten)
     OutlinedButton(onClick = testPush, enabled = !beschaeftigt) { Text("Test-Push anfordern", color = Farben.Tinte) }
     Spacer(Modifier.height(8.dp))
     if (!nachfragen) {

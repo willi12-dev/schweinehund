@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
     /** Einladungscode aus einem angetippten Link (https://…/e/CODE). */
     private val einladung = mutableStateOf<String?>(null)
 
+    /** Ziel aus einer angetippten Push-Nachricht (REQ-006): chat, rangliste oder lauf:<id>. */
+    private val pushZiel = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -54,6 +57,8 @@ class MainActivity : ComponentActivity() {
                 geteiltErledigt = { geteilt.value = emptyList() },
                 einladung = einladung.value,
                 einladungErledigt = { einladung.value = null },
+                pushZiel = pushZiel.value,
+                pushZielErledigt = { pushZiel.value = null },
             )
         }
     }
@@ -65,6 +70,11 @@ class MainActivity : ComponentActivity() {
 
     private fun uebernehmen(intent: Intent?) {
         if (intent == null) return
+        // Push angetippt: Firebase (App im Hintergrund) bzw. PushEmpfang (App offen) legen die Daten als Extras ab.
+        intent.getStringExtra("ziel")?.let { ziel ->
+            pushZiel.value = if (ziel == "lauf") "lauf:${intent.getStringExtra("lauf_id") ?: ""}" else ziel
+            intent.removeExtra("ziel")
+        }
         if (intent.action == Intent.ACTION_VIEW) {
             val code = intent.data?.toString()?.let { einladungsCode(it) }
             if (!code.isNullOrBlank()) einladung.value = code

@@ -71,6 +71,30 @@ data class LaufAnzeige(
     val streckePrivat: Boolean = false,
     val karte: KartenDaten? = null,
     val lk: String = "",
+    val reaktionen: List<Reaktion> = emptyList(),
+    val kommentare: List<Kommentar> = emptyList(),
+    val kommentareAnzahl: Int = 0,
+)
+
+/** REQ-006: Reaktion an einem Lauf (z. B. 🔥 ×2, ich = selbst gesetzt). */
+data class Reaktion(val emoji: String, val anzahl: Int, val ich: Boolean, val namen: List<String>)
+
+data class Absender(val name: String, val farbe: String, val kuerzel: String)
+
+data class Kommentar(val id: Long, val text: String, val eigen: Boolean, val absender: Absender, val zeit: String)
+
+/** Eine Chatnachricht – absender == null heißt: Horst. */
+data class Nachricht(val id: Long, val text: String, val horst: Boolean, val absender: Absender?, val eigen: Boolean,
+                     val laufId: Long?, val zeit: String)
+
+val REAKTIONEN = listOf("👏", "🔥", "💪", "😂", "🐷")
+
+/** Push-Arten (REQ-006) mit Text für den Bereich „Ich“. */
+val PUSH_ARTEN = listOf(
+    "lauf" to "Neuer Lauf in der Familie",
+    "chat" to "Neue Chatnachricht",
+    "reaktion" to "Reaktion oder Kommentar auf meinen Lauf",
+    "ueberholt" to "Jemand hat mich überholt",
 )
 
 /** Rangliste, Horst-o-Meter und eigener Fortschritt (REQ-004). */
@@ -144,7 +168,12 @@ data class Mitglied(
 /** Ergebnis von Gründen oder Einlösen: der geheime Schlüssel für dieses Handy und wer man ist. */
 data class Anmeldung(val schluessel: String, val ich: Mitglied)
 
-data class Familienstand(val ich: Mitglied, val mitglieder: List<Mitglied>)
+data class Familienstand(
+    val ich: Mitglied,
+    val mitglieder: List<Mitglied>,
+    val chatUngelesen: Int = 0,
+    val pushArten: Map<String, Boolean> = emptyMap(),
+)
 
 /** Fertiger Einladungstext für WhatsApp. */
 data class Einladung(val text: String, val link: String, val code: String)
@@ -202,6 +231,9 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     sichtbarkeit = obj["sichtbarkeit"].text() ?: "familie",
     streckePrivat = (obj["strecke_privat"] as? JsonPrimitive)?.booleanOrNull ?: false,
     lk = obj["lk"].text() ?: "",
+    reaktionen = reaktionenLesen(obj["reaktionen"]),
+    kommentare = kommentareLesen(obj["kommentare"]),
+    kommentareAnzahl = (obj["kommentare_anzahl"] as? JsonPrimitive)?.intOrNull ?: 0,
     karte = (obj["karte"] as? JsonObject)?.let { k ->
         KartenDaten(
             punkte = (k["punkte"] as? JsonArray)?.mapNotNull { p ->
@@ -243,7 +275,11 @@ fun anmeldungLesen(json: String, code: Int): Antwort<Anmeldung> =
 
 fun familieLesen(json: String, code: Int): Antwort<Familienstand> =
     auswerten(json, code) { o ->
-        Familienstand(mitgliedLesen(o["ich"]!!.jsonObject).copy(ich = true), o["mitglieder"]!!.jsonArray.map { mitgliedLesen(it.jsonObject) })
+        Familienstand(
+            mitgliedLesen(o["ich"]!!.jsonObject).copy(ich = true), o["mitglieder"]!!.jsonArray.map { mitgliedLesen(it.jsonObject) },
+            chatUngelesen = (o["chat_ungelesen"] as? JsonPrimitive)?.intOrNull ?: 0,
+            pushArten = pushArtenLesen(o["push_arten"]),
+        )
     }
 
 fun einladungLesen(json: String, code: Int): Antwort<Einladung> =
@@ -318,6 +354,40 @@ fun punktestandLesen(json: String, code: Int): Antwort<Punktestand> = auswerten(
             (best?.get(schluessel) as? JsonObject)?.let { Bestwert(name, it["wert"].text() ?: "", it["wann"].text() ?: "") }
         },
     )
+}
+
+fun pushArtenLesen(e: JsonElement?): Map<String, Boolean> =
+    (e as? JsonObject)?.mapValues { (_, v) -> (v as? JsonPrimitive)?.booleanOrNull ?: true } ?: emptyMap()
+
+fun reaktionenLesen(e: JsonElement?): List<Reaktion> = (e as? JsonArray)?.map { r ->
+    val o = r.jsonObject
+    Reaktion(o["emoji"].text() ?: "", (o["anzahl"] as? JsonPrimitive)?.intOrNull ?: 0,
+        (o["ich"] as? JsonPrimitive)?.booleanOrNull ?: false, o["namen"].texte())
+} ?: emptyList()
+
+private fun absenderLesen(e: JsonElement?): Absender? = (e as? JsonObject)?.let {
+    Absender(it["name"].text() ?: "?", it["farbe"].text() ?: "#8A94A6", it["kuerzel"].text() ?: "?")
+}
+
+fun kommentareLesen(e: JsonElement?): List<Kommentar> = (e as? JsonArray)?.mapNotNull { k ->
+    val o = k.jsonObject
+    val ab = absenderLesen(o["absender"]) ?: return@mapNotNull null
+    Kommentar((o["id"] as? JsonPrimitive)?.longOrNull ?: 0, o["text"].text() ?: "", (o["eigen"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        ab, o["zeit_text"].text() ?: "")
+} ?: emptyList()
+
+fun nachrichtLesen(o: JsonObject) = Nachricht(
+    id = (o["id"] as? JsonPrimitive)?.longOrNull ?: 0,
+    text = o["text"].text() ?: "",
+    horst = (o["horst"] as? JsonPrimitive)?.booleanOrNull ?: false,
+    absender = absenderLesen(o["absender"]),
+    eigen = (o["eigen"] as? JsonPrimitive)?.booleanOrNull ?: false,
+    laufId = (o["lauf_id"] as? JsonPrimitive)?.longOrNull,
+    zeit = o["zeit_text"].text() ?: "",
+)
+
+fun chatLesen(json: String, code: Int): Antwort<Pair<List<Nachricht>, Int>> = auswerten(json, code) { o ->
+    o["nachrichten"]!!.jsonArray.map { nachrichtLesen(it.jsonObject) } to ((o["ungelesen"] as? JsonPrimitive)?.intOrNull ?: 0)
 }
 
 /** Einladungscode aus einem Link („…/e/ABCD…“) oder einer Eingabe – nur Großbuchstaben und Ziffern. */
@@ -448,6 +518,46 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
     suspend fun pushMerken(token: String): Antwort<Boolean> = sicher {
         val (text, code) = client.post("$basis/api/ich/push") { json(this, buildJsonObject { put("token", token) }) }.text()
         auswerten(text, code) { true }
+    }
+
+    suspend fun chat(nach: Long = 0): Antwort<Pair<List<Nachricht>, Int>> = sicher {
+        val (text, code) = client.get("$basis/api/chat?nach=$nach") { anmelden() }.text()
+        chatLesen(text, code)
+    }
+
+    suspend fun chatSenden(nachricht: String): Antwort<Nachricht> = sicher {
+        val (text, code) = client.post("$basis/api/chat") { json(this, buildJsonObject { put("text", nachricht) }) }.text()
+        auswerten(text, code) { nachrichtLesen(it["nachricht"]!!.jsonObject) }
+    }
+
+    suspend fun chatLoeschen(id: Long): Antwort<Boolean> = sicher {
+        val (text, code) = client.delete("$basis/api/chat/$id") { anmelden() }.text()
+        auswerten(text, code) { true }
+    }
+
+    suspend fun chatGelesen(bis: Long): Antwort<Int> = sicher {
+        val (text, code) = client.post("$basis/api/chat/gelesen") { json(this, buildJsonObject { put("bis", bis) }) }.text()
+        auswerten(text, code) { (it["ungelesen"] as? JsonPrimitive)?.intOrNull ?: 0 }
+    }
+
+    suspend fun reagieren(laufId: Long, emoji: String): Antwort<List<Reaktion>> = sicher {
+        val (text, code) = client.post("$basis/api/laeufe/$laufId/reaktion") { json(this, buildJsonObject { put("emoji", emoji) }) }.text()
+        auswerten(text, code) { reaktionenLesen(it["reaktionen"]) }
+    }
+
+    suspend fun kommentieren(laufId: Long, kommentar: String): Antwort<List<Kommentar>> = sicher {
+        val (text, code) = client.post("$basis/api/laeufe/$laufId/kommentar") { json(this, buildJsonObject { put("text", kommentar) }) }.text()
+        auswerten(text, code) { kommentareLesen(it["kommentare"]) }
+    }
+
+    suspend fun kommentarLoeschen(id: Long): Antwort<Boolean> = sicher {
+        val (text, code) = client.delete("$basis/api/kommentare/$id") { anmelden() }.text()
+        auswerten(text, code) { true }
+    }
+
+    suspend fun pushArt(art: String, an: Boolean): Antwort<Map<String, Boolean>> = sicher {
+        val (text, code) = client.post("$basis/api/ich/push-arten") { json(this, buildJsonObject { put("art", art); put("an", an) }) }.text()
+        auswerten(text, code) { pushArtenLesen(it["arten"]) }
     }
 
     suspend fun familienLaeufe(): Antwort<List<LaufAnzeige>> = sicher {

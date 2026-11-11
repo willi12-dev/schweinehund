@@ -19,6 +19,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import kotlinx.coroutines.delay
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -79,7 +82,7 @@ private data class Wartend(val vorschau: Vorschau?, val fehler: String?, val nam
 
 /** Die vier Bereiche der App (REQ-002). */
 enum class Bereich(val titel: String, val zeichen: String) {
-    Familie("Familie", "👪"), Laeufe("Läufe", "🏃"), Rangliste("Rangliste", "🏆"), Ich("Ich", "🙂")
+    Familie("Familie", "👪"), Laeufe("Läufe", "🏃"), Chat("Chat", "💬"), Rangliste("Rangliste", "🏆"), Ich("Ich", "🙂")
 }
 
 @Composable
@@ -91,6 +94,8 @@ fun App(
     geteiltErledigt: () -> Unit,
     einladung: String? = null,
     einladungErledigt: () -> Unit = {},
+    pushZiel: String? = null,
+    pushZielErledigt: () -> Unit = {},
 ) {
     val geraetId = remember {
         plattform.lesen("geraet_id") ?: ("g-" + (1..24).map { "0123456789abcdef"[Random.nextInt(16)] }.joinToString(""))
@@ -118,6 +123,9 @@ fun App(
     var wette by remember { mutableStateOf("") }
     var ruhm by remember { mutableStateOf<List<RuhmEintrag>>(emptyList()) }
     var gesehen by remember { mutableStateOf(plattform.lesen("show_gesehen") ?: "") }
+    var nachrichten by remember { mutableStateOf<List<Nachricht>>(emptyList()) }
+    var ungelesen by remember { mutableStateOf(0) }
+    val hauptScroll = rememberScrollState()
     val scope = rememberCoroutineScope()
 
     fun abmelden(grund: String) {
@@ -137,7 +145,7 @@ fun App(
 
     suspend fun neuLaden() {
         if (schluessel == null) return
-        pruefen(server.familie())?.let { familie = it }
+        pruefen(server.familie())?.let { familie = it; ungelesen = it.chatUngelesen }
         pruefen(server.liste())?.let { laeufe = it }
         pruefen(server.familienLaeufe())?.let { familienLaeufe = it }
         person?.let { p -> pruefen(server.liste(p.id))?.let { personLaeufe = it } }
@@ -164,6 +172,39 @@ fun App(
     LaunchedEffect(Unit) {
         zustand = server.status()
         if (zustand is ServerZustand.Erreichbar) neuLaden()
+    }
+
+    // REQ-006: Bei offenem Chat alle 5 Sekunden nach neuen Nachrichten fragen (keine Dauerverbindung im kostenlosen Tarif)
+    LaunchedEffect(bereich, schluessel) {
+        if (bereich != Bereich.Chat || schluessel == null) return@LaunchedEffect
+        pruefen(server.chat())?.let { (liste, _) -> nachrichten = liste }
+        while (true) {
+            nachrichten.lastOrNull()?.let { letzte -> pruefen(server.chatGelesen(letzte.id))?.let { ungelesen = it } }
+            delay(5000)
+            val nach = nachrichten.lastOrNull()?.id ?: 0
+            pruefen(server.chat(nach))?.let { (neu, _) ->
+                if (neu.isNotEmpty()) nachrichten = nachrichten + neu.filter { n -> nachrichten.none { it.id == n.id } }
+            }
+        }
+    }
+
+    // Neue Nachrichten im Chat: nach unten rollen
+    LaunchedEffect(bereich, nachrichten.size) {
+        if (bereich == Bereich.Chat) hauptScroll.animateScrollTo(hauptScroll.maxValue)
+    }
+
+    // Push angetippt: an die passende Stelle springen
+    LaunchedEffect(pushZiel, schluessel) {
+        val ziel = pushZiel ?: return@LaunchedEffect
+        if (schluessel == null) return@LaunchedEffect
+        pushZielErledigt()
+        when {
+            ziel == "chat" -> bereich = Bereich.Chat
+            ziel == "rangliste" -> bereich = Bereich.Rangliste
+            ziel.startsWith("lauf:") -> ziel.removePrefix("lauf:").toLongOrNull()?.let { id ->
+                pruefen(server.detail(id))?.let { detail = it }
+            }
+        }
     }
 
     // Push-Schlüssel dieses Handys melden, damit die Sonntagsshow ankommt (REQ-005)
@@ -204,6 +245,23 @@ fun App(
                 offeneShow != null -> ShowSeite(offeneShow!!) { offeneShow = null }
                 offen != null -> LaufDetail(
                     lauf = offen, beschaeftigt = beschaeftigt, zurueck = { detail = null },
+                    reagieren = { emoji ->
+                        scope.launch {
+                            val id = offen.id ?: return@launch
+                            pruefen(server.reagieren(id, emoji))?.let { r -> detail = offen.copy(reaktionen = r) }
+                        }
+                    },
+                    kommentieren = { text ->
+                        scope.launch {
+                            val id = offen.id ?: return@launch
+                            pruefen(server.kommentieren(id, text))?.let { k -> detail = offen.copy(kommentare = k) }
+                        }
+                    },
+                    kommentarLoeschen = { k ->
+                        scope.launch {
+                            if (pruefen(server.kommentarLoeschen(k.id)) == true) detail = offen.copy(kommentare = offen.kommentare.filter { it.id != k.id })
+                        }
+                    },
                     sichtbarkeit = { wert ->
                         scope.launch {
                             val id = offen.id ?: return@launch
@@ -223,7 +281,7 @@ fun App(
                 )
                 else -> Column(Modifier.fillMaxSize()) {
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                        Modifier.weight(1f).fillMaxWidth().verticalScroll(hauptScroll)
                             .padding(horizontal = 20.dp, vertical = 22.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -297,6 +355,18 @@ fun App(
                                     }
                                 },
                             )
+                            Bereich.Chat -> ChatSeite(
+                                nachrichten = nachrichten, beschaeftigt = beschaeftigt,
+                                senden = { text ->
+                                    scope.launch {
+                                        pruefen(server.chatSenden(text))?.let { n -> if (nachrichten.none { it.id == n.id }) nachrichten = nachrichten + n }
+                                    }
+                                },
+                                loeschen = { n ->
+                                    scope.launch { if (pruefen(server.chatLoeschen(n.id)) == true) nachrichten = nachrichten.filter { it.id != n.id } }
+                                },
+                                laufOeffnen = { id -> scope.launch { pruefen(server.detail(id))?.let { detail = it } } },
+                            )
                             Bereich.Rangliste -> {
                                 RanglisteSeite(
                                 stand = punktestand, zeitraum = zeitraum,
@@ -343,6 +413,12 @@ fun App(
                             }
                             Bereich.Ich -> IchSeite(
                                 ich = familie?.ich, appVersion = appVersion, beschaeftigt = beschaeftigt,
+                                pushArten = familie?.pushArten ?: emptyMap(),
+                                pushUmschalten = { art, an ->
+                                    scope.launch {
+                                        pruefen(server.pushArt(art, an))?.let { arten -> familie = familie?.copy(pushArten = arten) }
+                                    }
+                                },
                                 standardWaehlen = { wert ->
                                     scope.launch { pruefen(server.standardSichtbarkeit(wert)); neuLaden() }
                                 },
@@ -361,7 +437,7 @@ fun App(
                             )
                         }
                     }
-                    Navigation(bereich) {
+                    Navigation(bereich, ungelesen) {
                         if (it == Bereich.Laeufe && bereich != Bereich.Laeufe) person = null
                         bereich = it
                         if (it != Bereich.Ich) scope.launch { neuLaden() }
@@ -418,13 +494,17 @@ fun Hinweis(text: String, weg: (() -> Unit)? = null) {
 }
 
 @Composable
-private fun Navigation(aktiv: Bereich, waehlen: (Bereich) -> Unit) {
+private fun Navigation(aktiv: Bereich, ungelesen: Int, waehlen: (Bereich) -> Unit) {
     NavigationBar(containerColor = Farben.Weiss, tonalElevation = 0.dp) {
         Bereich.entries.forEach { b ->
             NavigationBarItem(
                 selected = b == aktiv,
                 onClick = { waehlen(b) },
-                icon = { Text(b.zeichen, fontSize = 20.sp) },
+                icon = {
+                    if (b == Bereich.Chat && ungelesen > 0) {
+                        BadgedBox(badge = { Badge(containerColor = Farben.Orange) { Text("$ungelesen") } }) { Text(b.zeichen, fontSize = 20.sp) }
+                    } else Text(b.zeichen, fontSize = 20.sp)
+                },
                 label = { Text(b.titel, fontSize = 12.sp, fontWeight = if (b == aktiv) FontWeight.Bold else FontWeight.Normal) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = Farben.Tinte, unselectedTextColor = Farben.Grau, indicatorColor = Farben.OrangeHell),
@@ -503,6 +583,9 @@ private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -
             else -> ""
         }
         Text(lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it } + strecke, color = Farben.Grau, fontSize = 12.sp)
+        val echo = lauf.reaktionen.joinToString("  ") { "${it.emoji}${if (it.anzahl > 1) it.anzahl else ""}" } +
+            if (lauf.kommentareAnzahl > 0) "   💬 ${lauf.kommentareAnzahl}" else ""
+        if (echo.isNotBlank()) Text(echo.trim(), fontSize = 14.sp, color = Farben.Tinte)
     }
 }
 
@@ -576,6 +659,9 @@ private fun LaufDetail(
     lauf: LaufAnzeige,
     beschaeftigt: Boolean,
     zurueck: () -> Unit,
+    reagieren: (String) -> Unit,
+    kommentieren: (String) -> Unit,
+    kommentarLoeschen: (Kommentar) -> Unit,
     sichtbarkeit: (String) -> Unit,
     loeschen: () -> Unit,
 ) {
@@ -623,6 +709,8 @@ private fun LaufDetail(
                 if (lauf.rest.isNotBlank()) Text("Rest: ${lauf.rest}", color = Farben.Grau, fontSize = 13.sp)
             }
         }
+        ReaktionenLeiste(lauf.reaktionen, !beschaeftigt, reagieren)
+        KommentareBereich(lauf.kommentare, !beschaeftigt, kommentieren, kommentarLoeschen)
         if (lauf.eigen) {
             if (lauf.hatStrecke) SichtbarkeitWahl(lauf.sichtbarkeit, !beschaeftigt, sichtbarkeit)
             if (!nachfragen) {
