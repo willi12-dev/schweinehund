@@ -1,6 +1,7 @@
 package app.schweinehund
 
 import kotlin.test.Test
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -97,5 +98,27 @@ class ServerDienstTest {
     fun farbeAusHex() {
         assertEquals(farbe("#EF7448"), farbe("EF7448"))
         assertEquals(Farben.Grau, farbe("rot"))
+    }
+
+    @Test
+    fun abschnitteNachTempo() {
+        val p = listOf(KartenPunkt(0.0, 0.0, 1), KartenPunkt(0.0, 1.0, 1), KartenPunkt(0.0, 2.0, 1), KartenPunkt(0.0, 3.0, 4), KartenPunkt(0.0, 4.0, 4))
+        val a = abschnitte(p)
+        assertEquals(listOf(1, 4), a.map { it.first })
+        assertEquals(3, a[0].second.size)
+        assertEquals(p[2], a[1].second.first())          // nahtlos: neuer Abschnitt beginnt am Ende des alten
+        assertTrue(abschnitte(p.take(1)).isEmpty())
+    }
+
+    @Test
+    fun laufMitKarteUndMitgliedLesen() {
+        val json = """{"id": 7, "start_text": "Mo 01.06. 06:13", "distanz_km": "4,93", "eigen": false, "sichtbarkeit": "familie",
+            "strecke_privat": false, "mitglied": {"id": 2, "name": "Testläufer B", "farbe": "#5B8DEF"},
+            "karte": {"punkte": [[50.1, 8.1, 0], [50.2, 8.2, 4]], "km": [[50.15, 8.15, 1]]}}"""
+        val l = laufLesen(kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject)
+        assertEquals("Testläufer B", l.mitgliedName)
+        assertEquals(false, l.eigen)
+        assertEquals(2, l.karte!!.punkte.size)
+        assertEquals(1, l.karte!!.km.first().km)
     }
 }

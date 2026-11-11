@@ -5,6 +5,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -22,6 +23,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
@@ -61,7 +63,21 @@ data class LaufAnzeige(
     val kmZeiten: List<String>,
     val rest: String,
     val linie: List<Pair<Float, Float>>,
+    // REQ-003: wem der Lauf gehört, wer ihn sieht, Karte
+    val mitgliedName: String = "",
+    val mitgliedFarbe: String = "#8A94A6",
+    val eigen: Boolean = true,
+    val sichtbarkeit: String = "familie",
+    val streckePrivat: Boolean = false,
+    val karte: KartenDaten? = null,
 )
+
+/** Ein Punkt der Strecke mit Tempo-Klasse (0 = langsamste … 4 = schnellste Abschnitte dieses Laufs). */
+data class KartenPunkt(val lat: Double, val lon: Double, val klasse: Int)
+
+data class KmMarke(val lat: Double, val lon: Double, val km: Int)
+
+data class KartenDaten(val punkte: List<KartenPunkt>, val km: List<KmMarke>)
 
 /** Antwort des Servers: entweder ein Wert oder ein Satz, was schiefging. abgemeldet = Schlüssel ungültig (401). */
 data class Antwort<T>(val wert: T?, val fehler: String?, val abgemeldet: Boolean = false)
@@ -79,6 +95,7 @@ data class Mitglied(
     val letzterLauf: String? = null,
     val kmWoche: String = "0",
     val laeufeWoche: Int = 0,
+    val standardSichtbarkeit: String = "familie",
 ) {
     val istVerwalter: Boolean get() = rolle == "verwalter"
 }
@@ -138,6 +155,27 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
         val y = xy.getOrNull(1)?.jsonPrimitive?.floatOrNull
         if (x != null && y != null) x to y else null
     } ?: emptyList(),
+    mitgliedName = (obj["mitglied"] as? JsonObject)?.get("name").text() ?: "",
+    mitgliedFarbe = (obj["mitglied"] as? JsonObject)?.get("farbe").text() ?: "#8A94A6",
+    eigen = (obj["eigen"] as? JsonPrimitive)?.booleanOrNull ?: true,
+    sichtbarkeit = obj["sichtbarkeit"].text() ?: "familie",
+    streckePrivat = (obj["strecke_privat"] as? JsonPrimitive)?.booleanOrNull ?: false,
+    karte = (obj["karte"] as? JsonObject)?.let { k ->
+        KartenDaten(
+            punkte = (k["punkte"] as? JsonArray)?.mapNotNull { p ->
+                val a = p.jsonArray
+                val lat = a.getOrNull(0)?.jsonPrimitive?.doubleOrNull
+                val lon = a.getOrNull(1)?.jsonPrimitive?.doubleOrNull
+                if (lat != null && lon != null) KartenPunkt(lat, lon, a.getOrNull(2)?.jsonPrimitive?.intOrNull ?: 2) else null
+            } ?: emptyList(),
+            km = (k["km"] as? JsonArray)?.mapNotNull { p ->
+                val a = p.jsonArray
+                val lat = a.getOrNull(0)?.jsonPrimitive?.doubleOrNull
+                val lon = a.getOrNull(1)?.jsonPrimitive?.doubleOrNull
+                if (lat != null && lon != null) KmMarke(lat, lon, a.getOrNull(2)?.jsonPrimitive?.intOrNull ?: 0) else null
+            } ?: emptyList(),
+        )
+    },
 )
 
 fun mitgliedLesen(obj: JsonObject): Mitglied {
@@ -154,6 +192,7 @@ fun mitgliedLesen(obj: JsonObject): Mitglied {
         letzterLauf = letzter?.let { "${it["start_text"].text() ?: ""} · ${it["distanz_km"].text() ?: "–"} km" },
         kmWoche = obj["km_woche"].text() ?: "0",
         laeufeWoche = (obj["laeufe_woche"] as? JsonPrimitive)?.intOrNull ?: 0,
+        standardSichtbarkeit = obj["standard_sichtbarkeit"].text() ?: "familie",
     )
 }
 
@@ -249,9 +288,30 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         einladungLesen(text, code)
     }
 
-    suspend fun farbeAendern(farbe: String): Antwort<Mitglied> = sicher {
-        val (text, code) = client.post("$basis/api/ich") { json(this, buildJsonObject { put("farbe", farbe) }) }.text()
+    suspend fun farbeAendern(farbe: String): Antwort<Mitglied> = ichAendern("farbe", farbe)
+
+    suspend fun standardSichtbarkeit(wert: String): Antwort<Mitglied> = ichAendern("standard_sichtbarkeit", wert)
+
+    private suspend fun ichAendern(feld: String, wert: String): Antwort<Mitglied> = sicher {
+        val (text, code) = client.post("$basis/api/ich") { json(this, buildJsonObject { put(feld, wert) }) }.text()
         auswerten(text, code) { mitgliedLesen(it["ich"]!!.jsonObject) }
+    }
+
+    suspend fun familienLaeufe(): Antwort<List<LaufAnzeige>> = sicher {
+        val (text, code) = client.get("$basis/api/laeufe/familie") { anmelden() }.text()
+        auswerten(text, code) { o -> o["laeufe"]!!.jsonArray.map { laufLesen(it.jsonObject) } }
+    }
+
+    suspend fun sichtbarkeit(id: Long, wert: String): Antwort<LaufAnzeige> = sicher {
+        val (text, code) = client.post("$basis/api/laeufe/$id/sichtbarkeit") {
+            json(this, buildJsonObject { put("sichtbarkeit", wert) })
+        }.text()
+        auswerten(text, code) { laufLesen(it["lauf"]!!.jsonObject) }
+    }
+
+    suspend fun loeschen(id: Long): Antwort<Boolean> = sicher {
+        val (text, code) = client.delete("$basis/api/laeufe/$id") { anmelden() }.text()
+        auswerten(text, code) { true }
     }
 
     private suspend fun <T> sicher(block: suspend () -> Antwort<T>): Antwort<T> =
@@ -303,10 +363,11 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         vorschauLesen(text, code)
     }
 
-    suspend fun bestaetigen(entwurf: String, geraetId: String, pushToken: String?): Antwort<String> = sicher {
+    suspend fun bestaetigen(entwurf: String, geraetId: String, pushToken: String?, sichtbarkeit: String? = null): Antwort<String> = sicher {
         val (text, code) = client.post("$basis/api/laeufe/bestaetigen") {
             json(this, buildJsonObject {
                 put("entwurf", entwurf); put("geraet_id", geraetId)
+                if (sichtbarkeit != null) put("sichtbarkeit", sichtbarkeit)
                 if (pushToken != null) put("push_token", pushToken)
             })
         }.text()
@@ -336,8 +397,8 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         }
     }
 
-    suspend fun liste(): Antwort<List<LaufAnzeige>> = sicher {
-        val (text, code) = client.get("$basis/api/laeufe") { anmelden() }.text()
+    suspend fun liste(mitgliedId: Long? = null): Antwort<List<LaufAnzeige>> = sicher {
+        val (text, code) = client.get("$basis/api/laeufe" + (mitgliedId?.let { "?mitglied=$it" } ?: "")) { anmelden() }.text()
         auswerten(text, code) { o -> o["laeufe"]!!.jsonArray.map { laufLesen(it.jsonObject) } }
     }
 

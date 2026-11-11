@@ -41,6 +41,8 @@ kotlin {
             implementation(libs.firebase.messaging)
             implementation(libs.health.connect)
             implementation(libs.mlkit.text)
+            implementation(libs.maplibre)
+            implementation(libs.lifecycle.compose)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

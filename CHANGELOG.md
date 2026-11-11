@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.4.0 (in Entwicklung)
+- REQ-003 Läufe und Karte: Läufe der ganzen Familie (Reiter „Familie“ / „Meine“, Tipp auf ein Mitglied zeigt
+  dessen Läufe), Detailansicht mit echter Karte (MapLibre + OpenFreeMap), Strecke nach Tempo eingefärbt,
+  Start/Ziel und Kilometer-Marken.
+- Sichtbarkeit pro Lauf: „Familie“ oder „nur ich“ (Familie sieht Zahlen ohne Karte, zählt trotzdem); Standard
+  für neue Läufe unter „Ich“; eigene Läufe löschen.
+- Datenbank-Änderung 6: Sichtbarkeit an Läufen und Mitgliedern.
+
 ## v0.3.0 (in Entwicklung)
 - REQ-002 Grundgerüst: Familie gründen (erster = Verwalter), Mitglieder per Einladungslink über WhatsApp
   (einmal gültig, 7 Tage, auch als Code eintippbar), Anmeldung ohne Passwort per Handy-Schlüssel.

@@ -167,6 +167,7 @@ fun FamilieSeite(
     familie: Familienstand?,
     beschaeftigt: Boolean,
     anlegen: (String) -> Unit,
+    oeffnen: (Mitglied) -> Unit,
     einladen: (Mitglied) -> Unit,
 ) {
     if (familie == null) {
@@ -174,7 +175,7 @@ fun FamilieSeite(
         return
     }
     val verwalter = familie.ich.istVerwalter
-    familie.mitglieder.forEach { m -> MitgliedKarte(m, verwalter, beschaeftigt) { einladen(m) } }
+    familie.mitglieder.forEach { m -> MitgliedKarte(m, verwalter, beschaeftigt, { oeffnen(m) }) { einladen(m) } }
 
     if (verwalter) {
         var name by remember { mutableStateOf("") }
@@ -193,10 +194,11 @@ fun FamilieSeite(
 }
 
 @Composable
-private fun MitgliedKarte(m: Mitglied, verwalter: Boolean, beschaeftigt: Boolean, einladen: () -> Unit) {
+private fun MitgliedKarte(m: Mitglied, verwalter: Boolean, beschaeftigt: Boolean, oeffnen: () -> Unit, einladen: () -> Unit) {
     var nachfragen by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Farben.Weiss).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Farben.Weiss)
+            .clickable(enabled = m.beigetreten, onClick = oeffnen).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -255,6 +257,7 @@ fun IchSeite(
     ich: Mitglied?,
     appVersion: String,
     beschaeftigt: Boolean,
+    standardWaehlen: (String) -> Unit,
     farbeWaehlen: (String) -> Unit,
     testPush: () -> Unit,
     abmelden: () -> Unit,
@@ -281,6 +284,10 @@ fun IchSeite(
                     )
                 }
             }
+        }
+        Karte {
+            Text("Neue Läufe", color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            SichtbarkeitWahl(ich.standardSichtbarkeit, !beschaeftigt, standardWaehlen)
         }
     }
     OutlinedButton(onClick = testPush, enabled = !beschaeftigt) { Text("Test-Push anfordern", color = Farben.Tinte) }

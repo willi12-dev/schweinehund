@@ -27,6 +27,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,6 +102,10 @@ fun App(
     var zustand by remember { mutableStateOf<ServerZustand>(ServerZustand.Laedt) }
     var familie by remember { mutableStateOf<Familienstand?>(null) }
     var laeufe by remember { mutableStateOf<List<LaufAnzeige>>(emptyList()) }
+    var familienLaeufe by remember { mutableStateOf<List<LaufAnzeige>>(emptyList()) }
+    var reiter by remember { mutableStateOf(Reiter.Familie) }
+    var person by remember { mutableStateOf<Mitglied?>(null) }          // Läufe eines bestimmten Mitglieds
+    var personLaeufe by remember { mutableStateOf<List<LaufAnzeige>>(emptyList()) }
     var meldung by remember { mutableStateOf("") }
     var warteschlange by remember { mutableStateOf<List<Wartend>>(emptyList()) }
     var detail by remember { mutableStateOf<LaufAnzeige?>(null) }
@@ -127,6 +132,8 @@ fun App(
         if (schluessel == null) return
         pruefen(server.familie())?.let { familie = it }
         pruefen(server.liste())?.let { laeufe = it }
+        pruefen(server.familienLaeufe())?.let { familienLaeufe = it }
+        person?.let { p -> pruefen(server.liste(p.id))?.let { personLaeufe = it } }
     }
 
     fun angemeldet(a: Anmeldung) {
@@ -172,7 +179,25 @@ fun App(
                     einladungErledigt = einladungErledigt, meldung = meldung, angemeldet = { angemeldet(it) },
                     nochmal = { scope.launch { zustand = ServerZustand.Laedt; zustand = server.status() } },
                 )
-                offen != null -> LaufDetail(offen) { detail = null }
+                offen != null -> LaufDetail(
+                    lauf = offen, beschaeftigt = beschaeftigt, zurueck = { detail = null },
+                    sichtbarkeit = { wert ->
+                        scope.launch {
+                            val id = offen.id ?: return@launch
+                            pruefen(server.sichtbarkeit(id, wert))?.let { detail = it }
+                            neuLaden()
+                        }
+                    },
+                    loeschen = {
+                        scope.launch {
+                            val id = offen.id ?: return@launch
+                            beschaeftigt = true
+                            if (pruefen(server.loeschen(id)) == true) { detail = null; meldung = "Lauf gelöscht." }
+                            neuLaden()
+                            beschaeftigt = false
+                        }
+                    },
+                )
                 else -> Column(Modifier.fillMaxSize()) {
                     Column(
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
@@ -198,6 +223,12 @@ fun App(
                                         beschaeftigt = false
                                     }
                                 },
+                                oeffnen = { m ->
+                                    person = m
+                                    personLaeufe = emptyList()
+                                    bereich = Bereich.Laeufe
+                                    scope.launch { pruefen(server.liste(m.id))?.let { personLaeufe = it } }
+                                },
                                 einladen = { m ->
                                     scope.launch {
                                         beschaeftigt = true
@@ -208,7 +239,14 @@ fun App(
                                 },
                             )
                             Bereich.Laeufe -> LaeufeSeite(
-                                laeufe = laeufe, zustand = zustand, beschaeftigt = beschaeftigt,
+                                laeufe = when {
+                                    person != null -> personLaeufe
+                                    reiter == Reiter.Familie -> familienLaeufe
+                                    else -> laeufe
+                                },
+                                reiter = reiter, person = person,
+                                reiterWaehlen = { reiter = it; person = null },
+                                zustand = zustand, beschaeftigt = beschaeftigt,
                                 laufOeffnen = { lauf ->
                                     scope.launch {
                                         val id = lauf.id ?: return@launch
@@ -235,6 +273,9 @@ fun App(
                             Bereich.Rangliste -> RanglisteSeite()
                             Bereich.Ich -> IchSeite(
                                 ich = familie?.ich, appVersion = appVersion, beschaeftigt = beschaeftigt,
+                                standardWaehlen = { wert ->
+                                    scope.launch { pruefen(server.standardSichtbarkeit(wert)); neuLaden() }
+                                },
                                 farbeWaehlen = { farbe ->
                                     scope.launch { pruefen(server.farbeAendern(farbe)); neuLaden() }
                                 },
@@ -250,7 +291,11 @@ fun App(
                             )
                         }
                     }
-                    Navigation(bereich) { bereich = it; if (it == Bereich.Familie || it == Bereich.Laeufe) scope.launch { neuLaden() } }
+                    Navigation(bereich) {
+                        if (it == Bereich.Laeufe && bereich != Bereich.Laeufe) person = null
+                        bereich = it
+                        if (it == Bereich.Familie || it == Bereich.Laeufe) scope.launch { neuLaden() }
+                    }
                 }
             }
 
@@ -258,10 +303,11 @@ fun App(
             if (oben != null && schluessel != null) {
                 Kontrollkarte(
                     eintrag = oben, appVersion = appVersion, beschaeftigt = beschaeftigt,
-                    speichern = { v ->
+                    standard = familie?.ich?.standardSichtbarkeit ?: "familie",
+                    speichern = { v, sicht ->
                         scope.launch {
                             beschaeftigt = true
-                            val a = server.bestaetigen(v.entwurf, geraetId, plattform.pushToken())
+                            val a = server.bestaetigen(v.entwurf, geraetId, plattform.pushToken(), sicht)
                             pruefen(a)?.let { meldung = it }
                             warteschlange = warteschlange.drop(1)
                             neuLaden()
@@ -320,6 +366,9 @@ private fun Navigation(aktiv: Bereich, waehlen: (Bereich) -> Unit) {
 @Composable
 private fun LaeufeSeite(
     laeufe: List<LaufAnzeige>,
+    reiter: Reiter,
+    person: Mitglied?,
+    reiterWaehlen: (Reiter) -> Unit,
     zustand: ServerZustand,
     beschaeftigt: Boolean,
     laufOeffnen: (LaufAnzeige) -> Unit,
@@ -335,11 +384,18 @@ private fun LaeufeSeite(
         Button(onClick = healthConnect, enabled = !beschaeftigt, shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Health Connect abgleichen") }
     }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Reiter.entries.forEach { r ->
+            Auswahl(r.titel, gewaehlt = person == null && r == reiter) { reiterWaehlen(r) }
+        }
+        if (person != null) Auswahl(person.name + "  ✕", gewaehlt = true, farbe = farbe(person.farbe)) { reiterWaehlen(reiter) }
+    }
     if (laeufe.isEmpty() && zustand is ServerZustand.Erreichbar) {
-        Text("Noch keine Läufe. Teile deinen ersten Lauf an Schweinehund – Horst wartet (ungern).",
+        Text(if (person != null) "${person.name} hat noch keine Läufe." else
+            "Noch keine Läufe. Teile deinen ersten Lauf an Schweinehund – Horst wartet (ungern).",
             color = Farben.Grau, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 16.sp)
     }
-    laeufe.forEach { lauf -> LaufZeile(lauf) { laufOeffnen(lauf) } }
+    laeufe.forEach { lauf -> LaufZeile(lauf, mitName = person == null && reiter == Reiter.Familie) { laufOeffnen(lauf) } }
 }
 
 @Composable
@@ -351,19 +407,31 @@ fun Karte(dunkel: Boolean = false, inhalt: @Composable () -> Unit) {
 }
 
 @Composable
-private fun LaufZeile(lauf: LaufAnzeige, oeffnen: () -> Unit) {
+private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Farben.Weiss).clickable(onClick = oeffnen).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        if (mitName && lauf.mitgliedName.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(farbe(lauf.mitgliedFarbe)))
+                Spacer(Modifier.size(6.dp))
+                Text(if (lauf.eigen) "Du" else lauf.mitgliedName, color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
         Row(verticalAlignment = Alignment.Bottom) {
             Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, modifier = Modifier.weight(1f))
             Text(lauf.startText, color = Farben.Grau, fontSize = 13.sp)
         }
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }, lauf.puls?.let { "♥ $it" }).joinToString("  ·  "),
             color = Farben.Tinte, fontSize = 14.sp)
-        Text(lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it } + if (lauf.hatStrecke) "  ·  mit Strecke" else "",
-            color = Farben.Grau, fontSize = 12.sp)
+        val strecke = when {
+            lauf.hatStrecke && lauf.eigen && lauf.sichtbarkeit == "ich" -> "  ·  Strecke nur für dich"
+            lauf.hatStrecke -> "  ·  mit Strecke"
+            lauf.streckePrivat -> "  ·  Strecke privat"
+            else -> ""
+        }
+        Text(lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it } + strecke, color = Farben.Grau, fontSize = 12.sp)
     }
 }
 
@@ -372,9 +440,11 @@ private fun Kontrollkarte(
     eintrag: Wartend,
     appVersion: String,
     beschaeftigt: Boolean,
-    speichern: (Vorschau) -> Unit,
+    standard: String,
+    speichern: (Vorschau, String) -> Unit,
     verwerfen: () -> Unit,
 ) {
+    var sicht by remember(eintrag) { mutableStateOf(standard) }
     Box(Modifier.fillMaxSize().background(Farben.Schleier).clickable(enabled = false) {}, contentAlignment = Alignment.BottomCenter) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(Farben.Weiss).padding(22.dp),
@@ -394,11 +464,12 @@ private fun Kontrollkarte(
             Text(listOfNotNull(l.startText, l.tempo, l.anstiegM?.let { "↑ $it m" }, l.puls?.let { "Puls $it" }, l.kadenz?.let { "Kadenz $it" })
                 .joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
             if (l.linie.size >= 2) Strecke(l.linie, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)).background(Farben.Grund))
+            if (l.linie.size >= 2) SichtbarkeitWahl(sicht, !beschaeftigt) { sicht = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = verwerfen, enabled = !beschaeftigt, modifier = Modifier.weight(1f).height(50.dp)) {
                     Text("Verwerfen", color = Farben.Tinte)
                 }
-                Button(onClick = { speichern(v) }, enabled = !beschaeftigt,
+                Button(onClick = { speichern(v, sicht) }, enabled = !beschaeftigt,
                     modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Speichern", fontWeight = FontWeight.Bold) }
             }
@@ -406,22 +477,66 @@ private fun Kontrollkarte(
     }
 }
 
+/** Reiter im Bereich „Läufe“ (REQ-003). */
+enum class Reiter(val titel: String) { Familie("Familie"), Meine("Meine") }
+
 @Composable
-private fun LaufDetail(lauf: LaufAnzeige, zurueck: () -> Unit) {
+fun Auswahl(text: String, gewaehlt: Boolean, farbe: Color = Farben.Schiefer, aktiv: Boolean = true, waehlen: () -> Unit) {
+    Text(text, color = if (gewaehlt) Farben.Weiss else Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (gewaehlt) farbe else Farben.Hell)
+            .clickable(enabled = aktiv, onClick = waehlen).padding(horizontal = 14.dp, vertical = 8.dp))
+}
+
+@Composable
+fun SichtbarkeitWahl(wert: String, aktiv: Boolean, waehlen: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Wer sieht die Strecke?", color = Farben.Grau, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Auswahl("Familie", wert == "familie", aktiv = aktiv) { waehlen("familie") }
+            Auswahl("Nur ich", wert == "ich", aktiv = aktiv) { waehlen("ich") }
+        }
+        if (wert == "ich") Text("Die Familie sieht Kilometer und Zeit, aber keine Karte. Der Lauf zählt trotzdem.",
+            color = Farben.Grau, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun LaufDetail(
+    lauf: LaufAnzeige,
+    beschaeftigt: Boolean,
+    zurueck: () -> Unit,
+    sichtbarkeit: (String) -> Unit,
+    loeschen: () -> Unit,
+) {
+    var nachfragen by remember(lauf.id) { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         OutlinedButton(onClick = zurueck) { Text("‹ Zurück", color = Farben.Tinte) }
-        Text(lauf.startText, color = Farben.Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!lauf.eigen && lauf.mitgliedName.isNotBlank()) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(farbe(lauf.mitgliedFarbe)))
+                Spacer(Modifier.size(6.dp))
+                Text(lauf.mitgliedName + "  ·  ", color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Text(lauf.startText, color = Farben.Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
         Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 40.sp)
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }).joinToString("  ·  "), color = Farben.Tinte, fontSize = 16.sp)
         val extra = listOfNotNull(lauf.puls?.let { "Puls Ø $it" }, lauf.kadenz?.let { "Kadenz $it" }, lauf.schritte?.let { "${tausender(it)} Schritte" })
         if (extra.isNotEmpty()) Text(extra.joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
-        if (lauf.linie.size >= 2) {
-            Strecke(lauf.linie, Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(22.dp)).background(Farben.Weiss))
-        } else {
-            Text("Für diesen Lauf gibt es noch keine Strecke. Teile die GPX-Datei, dann erscheint sie hier.",
+        val karte = lauf.karte
+        when {
+            karte != null && karte.punkte.size >= 2 -> {
+                LaufKarte(karte, Modifier.fillMaxWidth().height(340.dp).clip(RoundedCornerShape(22.dp)))
+                TempoLegende()
+            }
+            lauf.linie.size >= 2 ->
+                Strecke(lauf.linie, Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(22.dp)).background(Farben.Weiss))
+            lauf.streckePrivat -> Text("${lauf.mitgliedName} zeigt die Strecke dieses Laufs nur sich selbst.",
+                color = Farben.Grau, fontSize = 14.sp)
+            else -> Text("Für diesen Lauf gibt es noch keine Strecke. Teile die GPX-Datei, dann erscheint sie hier.",
                 color = Farben.Grau, fontSize = 14.sp)
         }
         if (lauf.kmZeiten.isNotEmpty()) {
@@ -433,7 +548,31 @@ private fun LaufDetail(lauf: LaufAnzeige, zurueck: () -> Unit) {
                 if (lauf.rest.isNotBlank()) Text("Rest: ${lauf.rest}", color = Farben.Grau, fontSize = 13.sp)
             }
         }
-        Text("Quelle: " + lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it }, color = Farben.Grau, fontSize = 12.sp)
+        if (lauf.eigen) {
+            if (lauf.hatStrecke) SichtbarkeitWahl(lauf.sichtbarkeit, !beschaeftigt, sichtbarkeit)
+            if (!nachfragen) {
+                TextButton(onClick = { nachfragen = true }) { Text("Lauf löschen", color = Farben.Grau) }
+            } else {
+                Hinweis("Lauf wirklich löschen? Das lässt sich nicht rückgängig machen.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { nachfragen = false }) { Text("Abbrechen", color = Farben.Grau) }
+                    TextButton(onClick = loeschen, enabled = !beschaeftigt) { Text("Ja, löschen", color = Farben.Orange) }
+                }
+            }
+        }
+        Text("Quelle: " + lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it } + "  ·  Karte © OpenStreetMap, OpenFreeMap",
+            color = Farben.Grau, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun TempoLegende() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("langsamer", color = Farben.Grau, fontSize = 12.sp)
+        Spacer(Modifier.size(8.dp))
+        TEMPO_FARBEN.forEach { Box(Modifier.size(width = 22.dp, height = 6.dp).clip(RoundedCornerShape(3.dp)).background(farbe(it))); Spacer(Modifier.size(3.dp)) }
+        Spacer(Modifier.size(5.dp))
+        Text("schneller", color = Farben.Grau, fontSize = 12.sp)
     }
 }
 

@@ -10,6 +10,8 @@ activity-compose = "1.10.1"
 firebase-bom = "33.13.0"
 health-connect = "1.1.0"
 mlkit-text = "16.0.1"
+maplibre = "11.11.0"
+lifecycle = "2.9.1"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -22,6 +24,8 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 health-connect = { module = "androidx.health.connect:connect-client", version.ref = "health-connect" }
 mlkit-text = { module = "com.google.mlkit:text-recognition", version.ref = "mlkit-text" }
+lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+maplibre = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
