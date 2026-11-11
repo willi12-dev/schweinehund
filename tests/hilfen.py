@@ -19,3 +19,14 @@ def neuer_server(**umgebung):
     a = server_app.erstellen(os.path.join(ordner, "test.db"), os.path.join(ordner, "sicherungen"))
     a.testing = True
     return a, a.test_client(), ordner
+
+
+def angemeldeter_server(name="Testläufer A", geraet_id="geraet-test-0001", **umgebung):
+    """Wie neuer_server, aber die Familie ist gegründet und der Client schickt den Schlüssel des Verwalters mit."""
+    a, c, ordner = neuer_server(**umgebung)
+    from kern import geraete
+    geraete._versuche.clear()
+    r = c.post("/api/familie/gruenden", json={"name": name, "geraet_id": geraet_id})
+    assert r.status_code == 200, r.get_json()
+    c.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + r.get_json()["schluessel"]
+    return a, c, ordner

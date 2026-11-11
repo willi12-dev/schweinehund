@@ -2,7 +2,7 @@
 import io
 import os
 
-from hilfen import WURZEL, neuer_server
+from hilfen import WURZEL, angemeldeter_server, neuer_server
 
 from kern import bildtext, dateien, geraete, laeufe, push
 
@@ -117,7 +117,7 @@ def _bestaetigen(c, entwurf, **mehr):
 
 
 def test_teilen_kontrollkarte_und_speichern():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     v = _teilen(c, "huawei_lauf_b.tcx")
     assert v["lauf"]["distanz_km"] == "4,93" and v["lauf"]["dauer"] == "42:12" and v["lauf"]["start_text"] == "Mo 01.06. 06:13"
     assert c.get(f"/api/laeufe?geraet_id={GERAET}").get_json()["laeufe"] == []      # erst nach Bestätigen
@@ -125,11 +125,12 @@ def test_teilen_kontrollkarte_und_speichern():
     assert b["neu"] is True and b["lauf"]["hat_strecke"] and len(b["lauf"]["linie"]) > 50
     liste = c.get(f"/api/laeufe?geraet_id={GERAET}").get_json()["laeufe"]
     assert [l["distanz_km"] for l in liste] == ["4,93"] and "linie" not in liste[0]
-    assert c.get(f"/api/laeufe?geraet_id=anderes-geraet-1").get_json()["laeufe"] == []
+    fremd = c.application.test_client()                                # ohne Schlüssel
+    assert fremd.get("/api/laeufe").status_code == 401
 
 
 def test_doppelt_geteilt_wird_zusammengefuehrt():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     _bestaetigen(c, _teilen(c, "huawei_lauf_b.tcx")["entwurf"])
     v = c.post("/api/laeufe/vorschau", json={"text": _text("huawei_bild_spalten.txt")}).get_json()
     assert v["lauf"]["puls_avg"] == 144
@@ -144,7 +145,7 @@ def test_doppelt_geteilt_wird_zusammengefuehrt():
 
 
 def test_bild_zuerst_dann_datei_liefert_strecke_nach():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     _bestaetigen(c, c.post("/api/laeufe/vorschau", json={"text": _text("huawei_bild_einspaltig.txt")}).get_json()["entwurf"])
     _bestaetigen(c, _teilen(c, "huawei_lauf_b.tcx")["entwurf"])
     lauf = c.get(f"/api/laeufe?geraet_id={GERAET}").get_json()["laeufe"]
@@ -152,7 +153,7 @@ def test_bild_zuerst_dann_datei_liefert_strecke_nach():
 
 
 def test_health_connect_neu_und_ergaenzt():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     _bestaetigen(c, _teilen(c, "huawei_lauf_a.gpx")["entwurf"])
     sitzungen = [{"start": "2026-05-28T03:43:30Z", "ende": "2026-05-28T04:26:00Z", "distanz_m": 4950, "puls_avg": 141},
                  {"start": "2026-06-03T16:00:00Z", "ende": "2026-06-03T16:31:10Z", "distanz_m": 5210.4, "anstieg_m": 33}]
@@ -168,7 +169,7 @@ def test_health_connect_neu_und_ergaenzt():
 
 
 def test_garmin_datei_dann_health_connect_zahlen_der_uhr_gewinnen():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     _bestaetigen(c, _teilen(c, "garmin_lauf_c.gpx")["entwurf"])
     hc = [{"start": "2026-11-10T09:22:28Z", "ende": "2026-11-10T10:00:51Z", "distanz_m": 6110, "anstieg_m": 35, "puls_avg": 155}]
     assert c.post("/api/laeufe/health-connect", json={"geraet_id": GERAET, "sitzungen": hc}).get_json()["ergaenzt"] == 1
@@ -180,7 +181,7 @@ def test_garmin_datei_dann_health_connect_zahlen_der_uhr_gewinnen():
 
 
 def test_health_connect_dann_garmin_datei_behaelt_zahlen_der_uhr():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     hc = [{"start": "2026-11-10T09:22:40Z", "ende": "2026-11-10T10:00:51Z", "distanz_m": 6110, "anstieg_m": 35}]
     c.post("/api/laeufe/health-connect", json={"geraet_id": GERAET, "sitzungen": hc})
     _bestaetigen(c, _teilen(c, "garmin_lauf_c.gpx")["entwurf"])
@@ -190,13 +191,11 @@ def test_health_connect_dann_garmin_datei_behaelt_zahlen_der_uhr():
 
 
 def test_fehlerfaelle_der_schnittstelle():
-    _, c, _ = neuer_server()
+    _, c, _ = angemeldeter_server()
     r = c.post("/api/laeufe/vorschau", data={"datei": (io.BytesIO(b"kein lauf" * 20), "x.gpx")}, content_type="multipart/form-data")
     assert r.status_code == 422 and "GPX" in r.get_json()["fehler"]
     assert c.post("/api/laeufe/vorschau", json={"text": "nichts"}).status_code == 422
     assert c.post("/api/laeufe/bestaetigen", json={"entwurf": "gibtsnicht", "geraet_id": GERAET}).status_code == 410
-    assert c.post("/api/laeufe/bestaetigen", json={"entwurf": "x", "geraet_id": "<b>"}).status_code == 400
-    assert c.get("/api/laeufe?geraet_id=x").status_code == 400
     assert c.get(f"/api/laeufe/999?geraet_id={GERAET}").status_code == 404
 
 
@@ -205,7 +204,7 @@ def test_push_nach_dem_speichern():
     pfad, _ = _konto_datei()
     push._zugang.update(token="", bis=0)
     geraete._versuche.clear()
-    _, c, _ = neuer_server(FIREBASE_KONTO_DATEI=pfad)
+    _, c, _ = angemeldeter_server(FIREBASE_KONTO_DATEI=pfad)
     gesendet = []
 
     def post(url, **kw):

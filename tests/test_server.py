@@ -13,7 +13,7 @@ def test_version_aus_datei():
 def test_status_meldet_push_nicht_eingerichtet_ohne_konto():
     _, c, _ = neuer_server(FIREBASE_KONTO_DATEI="")
     d = c.get("/api/status").get_json()
-    assert d == {"server": "ok", "version": open(f"{WURZEL}/VERSION").read().strip(), "push": "nicht eingerichtet"}, d
+    assert d == {"server": "ok", "version": open(f"{WURZEL}/VERSION").read().strip(), "push": "nicht eingerichtet", "familie": False}, d
 
 
 def test_startseite_deutsch():

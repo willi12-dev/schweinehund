@@ -1,9 +1,10 @@
-"""Läufe übernehmen und anzeigen (REQ-001)."""
+"""Läufe übernehmen und anzeigen (REQ-001) – seit REQ-002 nur für angemeldete Familienmitglieder."""
 import re
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from kern import bildtext, dateien, datenbank, laeufe, push
+from schnittstelle.familie import angemeldet_noetig
 
 bp = Blueprint("laeufe", __name__, url_prefix="/api/laeufe")
 GERAET = re.compile(r"^[A-Za-z0-9\-]{8,64}$")
@@ -13,12 +14,13 @@ def _fehler(text, code=400):
     return jsonify(ok=False, fehler=text), code
 
 
-def _geraet(quelle):
-    g = str(quelle.get("geraet_id", "")).strip()
-    return g if GERAET.match(g) else None
+def _wem(quelle):
+    geraet = str(quelle.get("geraet_id", "")).strip()
+    return laeufe.besitzer(g.ich, geraet if GERAET.match(geraet) else "")
 
 
 @bp.post("/vorschau")
+@angemeldet_noetig
 def vorschau():
     """Datei (Formularfeld „datei“) oder erkannter Bildtext ({"text": …}) → Kontrollkarte."""
     con = datenbank.db()
@@ -44,20 +46,17 @@ def vorschau():
 
 
 @bp.post("/bestaetigen")
+@angemeldet_noetig
 def bestaetigen():
     daten = request.get_json(silent=True) or {}
-    geraet = _geraet(daten)
-    if not geraet:
-        return _fehler("Unbekanntes Gerät.")
-    laeufer = str(daten.get("laeufer", "")).strip()[:40]
     con = datenbank.db()
-    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), geraet, laeufer)
+    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten))
     if ergebnis is None:
         return _fehler("Die Vorschau ist abgelaufen – bitte die Datei noch einmal teilen.", 410)
     lauf_id, neu = ergebnis
     datenbank.protokoll(con, "Lauf gespeichert" if neu else "Lauf ergänzt", f"Lauf {lauf_id}")
     con.commit()
-    lauf = laeufe.detail(con, lauf_id, geraet)
+    lauf = laeufe.detail(con, lauf_id, g.ich["id"])
     token = str(daten.get("push_token", "")).strip()
     if token and push.konto():
         try:
@@ -69,17 +68,14 @@ def bestaetigen():
 
 
 @bp.post("/health-connect")
+@angemeldet_noetig
 def health_connect():
     daten = request.get_json(silent=True) or {}
-    geraet = _geraet(daten)
-    if not geraet:
-        return _fehler("Unbekanntes Gerät.")
     sitzungen = daten.get("sitzungen")
     if not isinstance(sitzungen, list):
         return _fehler("Keine Sitzungen übergeben.")
     con = datenbank.db()
-    neu, ergaenzt = laeufe.aus_health_connect(con, geraet, str(daten.get("laeufer", "")).strip()[:40],
-                                             [s for s in sitzungen if isinstance(s, dict)])
+    neu, ergaenzt = laeufe.aus_health_connect(con, _wem(daten), [s for s in sitzungen if isinstance(s, dict)])
     if neu or ergaenzt:
         datenbank.protokoll(con, "Health Connect", f"{neu} neu, {ergaenzt} ergänzt")
     con.commit()
@@ -87,15 +83,13 @@ def health_connect():
 
 
 @bp.get("")
+@angemeldet_noetig
 def liste():
-    geraet = _geraet(request.args)
-    if not geraet:
-        return _fehler("Unbekanntes Gerät.")
-    return jsonify(ok=True, laeufe=laeufe.liste(datenbank.db(), geraet))
+    return jsonify(ok=True, laeufe=laeufe.liste(datenbank.db(), g.ich["id"]))
 
 
 @bp.get("/<int:lauf_id>")
+@angemeldet_noetig
 def detail(lauf_id):
-    geraet = _geraet(request.args)
-    lauf = laeufe.detail(datenbank.db(), lauf_id, geraet) if geraet else None
+    lauf = laeufe.detail(datenbank.db(), lauf_id, g.ich["id"])
     return jsonify(ok=True, lauf=lauf) if lauf else _fehler("Lauf nicht gefunden.", 404)

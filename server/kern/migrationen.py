@@ -37,11 +37,24 @@ def _schritt_4(con):
     con.execute("UPDATE laeufe SET schritte = NULL WHERE schritte IS NOT NULL AND schritte < 100")
 
 
+
+def _schritt_5(con):
+    """v0.3.0 (REQ-002): Familie – Tabellen mitglieder/einladungen (aus schema.sql), Läufe bekommen ein Mitglied."""
+    spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
+    if "mitglied_id" not in spalten:
+        con.execute("ALTER TABLE laeufe ADD COLUMN mitglied_id INTEGER")
+
+
+# Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
+NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
+
+
 SCHRITTE = [
     (1, "Grundstand v0.1.0: Einstellungen, Protokoll, Geräte", _schritt_1),
     (2, "v0.2.0: Läufe und Entwürfe (REQ-001)", _schritt_2),
     (3, "v0.2.0: Garmin-Zahlen als Schätzung markieren", _schritt_3),
     (4, "v0.2.0: unplausible Schrittzahlen entfernen", _schritt_4),
+    (5, "v0.3.0: Familie und Mitglieder (REQ-002)", _schritt_5),
 ]
 STAND = SCHRITTE[-1][0]
 
@@ -73,6 +86,7 @@ def einrichten(con, pfad=None, sicherung_ordner=None, version="?"):
     frisch = not con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'einstellungen'").fetchone()
     if frisch:
         con.executescript(schema_text())
+        con.executescript(NACHLAUF)
         con.execute(f"PRAGMA user_version = {STAND}")
         protokoll(con, "Datenbank angelegt", f"Stand {STAND}")
         con.commit()
@@ -86,5 +100,6 @@ def einrichten(con, pfad=None, sicherung_ordner=None, version="?"):
         schritt(con)
         con.execute(f"PRAGMA user_version = {n}")
         protokoll(con, f"Datenbank-Änderung {n}", text)
+    con.executescript(NACHLAUF)
     con.commit()
     return [n for n, _, _ in offen]

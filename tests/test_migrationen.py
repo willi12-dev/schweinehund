@@ -49,3 +49,22 @@ def test_zweiter_start_aendert_nichts():
 def test_schritte_lueckenlos():
     nummern = [n for n, _, _ in migrationen.SCHRITTE]
     assert nummern == list(range(1, len(nummern) + 1))
+
+
+def test_laeufe_aus_v020_bekommen_mitglied_spalte():
+    """Datenbank von v0.2.0 (Läufe ohne Mitglied) → Schritt 5 ergänzt die Spalte, Läufe bleiben erhalten."""
+    ordner = tempfile.mkdtemp()
+    pfad = os.path.join(ordner, "v020.db")
+    con = sqlite3.connect(pfad)
+    alt = migrationen.schema_text().split("-- REQ-002: Familie")[0].replace(
+        "    mitglied_id   INTEGER,                    -- REQ-002: wem der Lauf gehört (NULL = Handy noch nicht angemeldet)\n", "")
+    con.executescript(alt)
+    con.execute("INSERT INTO laeufe (geraet_id, start, angelegt, geaendert) VALUES ('geraet-alt-0001', '2026-06-01T04:13:06+00:00', 'x', 'x')")
+    con.execute("PRAGMA user_version = 4")
+    con.commit()
+    con.close()
+    con = datenbank.verbinden(pfad)
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5]
+    spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
+    assert "mitglied_id" in spalten and con.execute("SELECT COUNT(*) FROM laeufe").fetchone()[0] == 1
+    assert con.execute("SELECT 1 FROM sqlite_master WHERE name = 'laeufe_mitglied_start'").fetchone()

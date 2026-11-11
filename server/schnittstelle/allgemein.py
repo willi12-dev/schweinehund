@@ -3,7 +3,7 @@ import os
 
 from flask import Blueprint, jsonify
 
-from kern import push, version
+from kern import datenbank, familie, push, version
 
 bp = Blueprint("allgemein", __name__)
 
@@ -21,4 +21,5 @@ def version_anzeigen():
 
 @bp.get("/api/status")
 def status():
-    return jsonify(server="ok", version=version.version(), push=push.status())
+    return jsonify(server="ok", version=version.version(), push=push.status(),
+                   familie=familie.gegruendet(datenbank.db()))

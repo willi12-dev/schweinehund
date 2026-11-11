@@ -24,12 +24,18 @@ def anzahl(con):
     return con.execute("SELECT COUNT(*) FROM geraete").fetchone()[0]
 
 
-def gebremst(ip, jetzt=None):
-    """True, wenn diese Adresse in den letzten 10 Minuten schon zu oft gefragt hat (zählt die Anfrage mit)."""
+def gebremst(ip, jetzt=None, topf="probe", grenze=GRENZE):
+    """True, wenn diese Adresse in den letzten 10 Minuten schon zu oft gefragt hat (zählt die Anfrage mit).
+    topf trennt die Bremsen (Push-Probe, Einladungen, Gründen)."""
     jetzt = jetzt if jetzt is not None else time.time()
-    liste = [t for t in _versuche.get(ip, []) if t > jetzt - FENSTER]
-    if len(liste) >= GRENZE:
-        _versuche[ip] = liste
+    schluessel = (topf, ip)
+    liste = [t for t in _versuche.get(schluessel, []) if t > jetzt - FENSTER]
+    if len(liste) >= grenze:
+        _versuche[schluessel] = liste
         return True
-    _versuche[ip] = liste + [jetzt]
+    _versuche[schluessel] = liste + [jetzt]
     return False
+
+
+def adresse(request):
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()

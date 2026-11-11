@@ -3,8 +3,8 @@
 Ablauf beim Teilen: Datei/Bildtext → `entwurf_anlegen` (Kontrollkarte in der App) → `bestaetigen` → gespeichert.
 Health Connect speichert direkt (`aus_health_connect`).
 
-Derselbe Lauf kann mehrfach kommen (Datei + Bild + Health Connect). Gleiche Startzeit (± 2 Min.) auf demselben
-Gerät = derselbe Lauf: Die Angaben werden zusammengeführt. Distanz/Dauer/Anstieg kommen aus der besten Quelle
+Derselbe Lauf kann mehrfach kommen (Datei + Bild + Health Connect). Gleiche Startzeit (± 2 Min.) beim selben
+Familienmitglied = derselbe Lauf: Die Angaben werden zusammengeführt. Distanz/Dauer/Anstieg kommen aus der besten Quelle
 (Datei vor Health Connect vor Bild – eine Datei ohne eigene Summen, z. B. von Garmin, zählt nur als Schätzung
 und weicht den Zahlen der Uhr aus Health Connect und vom Bild); Puls, Kadenz, Schritte und kcal ergänzt jede Quelle, die sie hat.
 """
@@ -55,23 +55,28 @@ def entwurf_holen(con, eid):
     return _aus_json(json.loads(zeile["daten"])) if zeile else None
 
 
-def bestaetigen(con, eid, geraet_id, laeufer):
+def besitzer(mitglied, geraet_id=""):
+    """Wem ein Lauf gehört: das angemeldete Mitglied (und von welchem Handy er kam)."""
+    return {"mitglied_id": mitglied["id"], "name": mitglied["name"], "geraet_id": geraet_id or mitglied.get("geraet_id") or ""}
+
+
+def bestaetigen(con, eid, wem):
     lauf = entwurf_holen(con, eid)
     if lauf is None:
         return None
     con.execute("DELETE FROM entwuerfe WHERE id = ?", (eid,))
-    return speichern(con, geraet_id, laeufer, lauf, lauf["quelle"])
+    return speichern(con, wem, lauf, lauf["quelle"])
 
 
 # ------------------------------------------------------------------ Speichern und Zusammenführen
-def _passender(con, geraet_id, start):
+def _passender(con, mitglied_id, start):
     von = (start - timedelta(seconds=FENSTER_S)).isoformat()
     bis = (start + timedelta(seconds=FENSTER_S)).isoformat()
-    return con.execute("SELECT * FROM laeufe WHERE geraet_id = ? AND start BETWEEN ? AND ? ORDER BY id LIMIT 1",
-                       (geraet_id, von, bis)).fetchone()
+    return con.execute("SELECT * FROM laeufe WHERE mitglied_id = ? AND start BETWEEN ? AND ? ORDER BY id LIMIT 1",
+                       (mitglied_id, von, bis)).fetchone()
 
 
-def speichern(con, geraet_id, laeufer, lauf, quelle):
+def speichern(con, wem, lauf, quelle):
     """Ergebnis: (id, neu). Ohne Startzeit kann ein Lauf nicht gespeichert werden."""
     if not lauf.get("start"):
         raise ValueError("Der Lauf hat keine Startzeit.")
@@ -79,19 +84,19 @@ def speichern(con, geraet_id, laeufer, lauf, quelle):
     jetzt = jetzt_text()
     punkte = _nach_json(lauf)["punkte"] if lauf.get("punkte") else []
     rang = "datei-geschaetzt" if quelle == "datei" and lauf.get("geschaetzt") else quelle
-    alt = _passender(con, geraet_id, start)
+    alt = _passender(con, wem["mitglied_id"], start)
     if alt is None:
         cur = con.execute(
-            "INSERT INTO laeufe (geraet_id, laeufer, start, art, distanz_m, dauer_s, anstieg_m, puls_avg, kadenz, "
+            "INSERT INTO laeufe (mitglied_id, geraet_id, laeufer, start, art, distanz_m, dauer_s, anstieg_m, puls_avg, kadenz, "
             "schritte, kcal, km_zeiten, punkte, quellen, zahlen_quelle, angelegt, geaendert) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (geraet_id, laeufer, start.isoformat(), lauf.get("art") or "laufen", lauf.get("distanz_m"),
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (wem["mitglied_id"], wem["geraet_id"], wem["name"], start.isoformat(), lauf.get("art") or "laufen", lauf.get("distanz_m"),
              lauf.get("dauer_s"), lauf.get("anstieg_m"), *(lauf.get(k) for k in ZUSATZ),
              json.dumps(lauf["km_zeiten"]) if lauf.get("km_zeiten") else "", json.dumps(punkte) if punkte else "",
              quelle, rang, jetzt, jetzt))
         return cur.lastrowid, True
 
-    felder = {"laeufer": laeufer or alt["laeufer"], "geaendert": jetzt,
+    felder = {"laeufer": wem["name"], "geaendert": jetzt,
               "quellen": ",".join(sorted(set(filter(None, alt["quellen"].split(","))) | {quelle}))}
     zahlen_neu = RANG[rang] >= RANG.get(alt["zahlen_quelle"], 0)
     if zahlen_neu:
@@ -116,7 +121,7 @@ def speichern(con, geraet_id, laeufer, lauf, quelle):
     return alt["id"], False
 
 
-def aus_health_connect(con, geraet_id, laeufer, sitzungen):
+def aus_health_connect(con, wem, sitzungen):
     """sitzungen: Liste von dicts mit start, ende (ISO), distanz_m, anstieg_m, puls_avg, art. Ergebnis: (neu, ergänzt)."""
     neu = ergaenzt = 0
     for s in sitzungen[:200]:
@@ -128,7 +133,7 @@ def aus_health_connect(con, geraet_id, laeufer, sitzungen):
         lauf = {"start": start, "dauer_s": max(0.0, (ende - start).total_seconds()), "art": s.get("art") or "laufen",
                 "distanz_m": _float(s.get("distanz_m")), "anstieg_m": _float(s.get("anstieg_m")),
                 "puls_avg": _int(s.get("puls_avg")), "punkte": [], "km_zeiten": None}
-        _, ist_neu = speichern(con, geraet_id, laeufer, lauf, "health-connect")
+        _, ist_neu = speichern(con, wem, lauf, "health-connect")
         neu, ergaenzt = neu + ist_neu, ergaenzt + (not ist_neu)
     return neu, ergaenzt
 
@@ -191,12 +196,12 @@ def fuer_app(lauf, quellen, mit_linie=True, lauf_id=None):
     return d
 
 
-def liste(con, geraet_id, anzahl=50):
-    """Die neuesten Läufe dieses Geräts (auch ältere Läufe, die nachträglich geteilt werden)."""
-    zeilen = con.execute("SELECT * FROM laeufe WHERE geraet_id = ? ORDER BY start DESC LIMIT ?", (geraet_id, anzahl))
+def liste(con, mitglied_id, anzahl=50):
+    """Die neuesten Läufe dieses Mitglieds (auch ältere Läufe, die nachträglich geteilt werden)."""
+    zeilen = con.execute("SELECT * FROM laeufe WHERE mitglied_id = ? ORDER BY start DESC LIMIT ?", (mitglied_id, anzahl))
     return [fuer_app(dict(z), z["quellen"].split(","), mit_linie=False, lauf_id=z["id"]) for z in zeilen]
 
 
-def detail(con, lauf_id, geraet_id):
-    z = con.execute("SELECT * FROM laeufe WHERE id = ? AND geraet_id = ?", (lauf_id, geraet_id)).fetchone()
+def detail(con, lauf_id, mitglied_id):
+    z = con.execute("SELECT * FROM laeufe WHERE id = ? AND mitglied_id = ?", (lauf_id, mitglied_id)).fetchone()
     return fuer_app(dict(z), z["quellen"].split(","), lauf_id=z["id"]) if z else None

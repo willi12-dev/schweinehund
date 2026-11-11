@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS geraete (
 CREATE TABLE IF NOT EXISTS laeufe (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     geraet_id     TEXT NOT NULL,
+    mitglied_id   INTEGER,                    -- REQ-002: wem der Lauf gehört (NULL = Handy noch nicht angemeldet)
     laeufer       TEXT NOT NULL DEFAULT '',
     start         TEXT NOT NULL,              -- UTC, ISO 8601
     art           TEXT NOT NULL DEFAULT 'laufen',
@@ -48,4 +49,25 @@ CREATE TABLE IF NOT EXISTS entwuerfe (
     id       TEXT PRIMARY KEY,
     daten    TEXT NOT NULL,
     angelegt REAL NOT NULL
+);
+
+-- REQ-002: Familie. Schlüssel und Einladungscodes nur als Prüfsumme (SHA-256).
+CREATE TABLE IF NOT EXISTS mitglieder (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    farbe       TEXT NOT NULL,
+    kuerzel     TEXT NOT NULL,
+    rolle       TEXT NOT NULL DEFAULT 'mitglied',   -- 'verwalter' oder 'mitglied'
+    schluessel  TEXT UNIQUE,                         -- Prüfsumme des Handy-Schlüssels; NULL = nicht angemeldet
+    geraet_id   TEXT NOT NULL DEFAULT '',
+    angelegt    TEXT NOT NULL,
+    beigetreten TEXT
+);
+
+CREATE TABLE IF NOT EXISTS einladungen (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL UNIQUE,                -- Prüfsumme des Codes
+    mitglied_id INTEGER NOT NULL,
+    gueltig_bis TEXT NOT NULL,
+    angelegt    TEXT NOT NULL
 );
