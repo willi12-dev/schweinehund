@@ -1,6 +1,6 @@
 # Änderungen
 
-## v0.7.0 (in Entwicklung)
+## v0.7.0 (11.11.2026)
 - REQ-006: Familienchat als fünfter Bereich (mit Zahl ungelesener Nachrichten), Reaktionen 👏🔥💪😂🐷 und
   Kommentare an jedem Lauf, Horst meldet neue Läufe, Bestwerte und Überholen im Chat.
 - Push bei neuem Lauf, Chatnachricht, Reaktion/Kommentar und Überholen – jede Art unter „Ich“ abschaltbar;
