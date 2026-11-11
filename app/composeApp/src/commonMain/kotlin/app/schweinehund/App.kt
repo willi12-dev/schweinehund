@@ -21,6 +21,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -73,6 +76,11 @@ private val QUELLEN_TEXT = mapOf("datei" to "Datei", "bild" to "Bild", "health-c
 /** Ein geteilter Lauf, der auf Bestätigung wartet – oder ein Satz, warum er nicht gelesen werden konnte. */
 private data class Wartend(val vorschau: Vorschau?, val fehler: String?, val name: String)
 
+/** Die vier Bereiche der App (REQ-002). */
+enum class Bereich(val titel: String, val zeichen: String) {
+    Familie("Familie", "👪"), Laeufe("Läufe", "🏃"), Rangliste("Rangliste", "🏆"), Ich("Ich", "🙂")
+}
+
 @Composable
 fun App(
     server: ServerDienst,
@@ -80,22 +88,54 @@ fun App(
     appVersion: String,
     geteilt: List<GeteilteDatei>,
     geteiltErledigt: () -> Unit,
+    einladung: String? = null,
+    einladungErledigt: () -> Unit = {},
 ) {
     val geraetId = remember {
         plattform.lesen("geraet_id") ?: ("g-" + (1..24).map { "0123456789abcdef"[Random.nextInt(16)] }.joinToString(""))
             .also { plattform.schreiben("geraet_id", it) }
     }
-    var name by remember { mutableStateOf(plattform.lesen("laeufer") ?: "") }
+    var schluessel by remember {
+        mutableStateOf(plattform.lesen("schluessel")?.takeIf { it.isNotBlank() }.also { server.schluessel = it })
+    }
     var zustand by remember { mutableStateOf<ServerZustand>(ServerZustand.Laedt) }
+    var familie by remember { mutableStateOf<Familienstand?>(null) }
     var laeufe by remember { mutableStateOf<List<LaufAnzeige>>(emptyList()) }
     var meldung by remember { mutableStateOf("") }
     var warteschlange by remember { mutableStateOf<List<Wartend>>(emptyList()) }
     var detail by remember { mutableStateOf<LaufAnzeige?>(null) }
     var beschaeftigt by remember { mutableStateOf(false) }
+    var bereich by remember { mutableStateOf(Bereich.Familie) }
     val scope = rememberCoroutineScope()
 
+    fun abmelden(grund: String) {
+        schluessel = null
+        server.schluessel = null
+        plattform.schreiben("schluessel", "")
+        familie = null
+        laeufe = emptyList()
+        meldung = grund
+    }
+
+    fun <T> pruefen(a: Antwort<T>): T? {
+        if (a.abgemeldet) abmelden(a.fehler ?: "Bitte neu anmelden.")
+        else if (a.wert == null && a.fehler != null) meldung = a.fehler
+        return a.wert
+    }
+
     suspend fun neuLaden() {
-        server.liste(geraetId).let { a -> if (a.wert != null) laeufe = a.wert else if (a.fehler != null) meldung = a.fehler }
+        if (schluessel == null) return
+        pruefen(server.familie())?.let { familie = it }
+        pruefen(server.liste())?.let { laeufe = it }
+    }
+
+    fun angemeldet(a: Anmeldung) {
+        plattform.schreiben("schluessel", a.schluessel)
+        server.schluessel = a.schluessel
+        schluessel = a.schluessel
+        meldung = "Willkommen in der Familie, ${a.ich.name}!"
+        bereich = Bereich.Familie
+        scope.launch { neuLaden() }
     }
 
     LaunchedEffect(Unit) {
@@ -103,20 +143,22 @@ fun App(
         if (zustand is ServerZustand.Erreichbar) neuLaden()
     }
 
-    LaunchedEffect(geteilt) {
-        if (geteilt.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(geteilt, schluessel) {
+        if (geteilt.isEmpty() || schluessel == null) return@LaunchedEffect
         val dateien = geteilt.toList()
         // Eigene Coroutine: geteiltErledigt() ändert den Schlüssel dieses Effekts und würde ihn sonst abbrechen.
         scope.launch {
-        for (datei in dateien) {
-            meldung = "Lese ${datei.name} …"
-            val antwort = if (datei.istBild) {
-                val text = plattform.texterkennung(datei)
-                if (text.isNullOrBlank()) Antwort(null, "Auf dem Bild wurde kein Text erkannt.") else server.vorschauText(text)
-            } else server.vorschauDatei(datei)
-            warteschlange = warteschlange + Wartend(antwort.wert, antwort.fehler, datei.name)
-        }
-        meldung = ""
+            bereich = Bereich.Laeufe
+            for (datei in dateien) {
+                meldung = "Lese ${datei.name} …"
+                val antwort = if (datei.istBild) {
+                    val text = plattform.texterkennung(datei)
+                    if (text.isNullOrBlank()) Antwort(null, "Auf dem Bild wurde kein Text erkannt.") else server.vorschauText(text)
+                } else server.vorschauDatei(datei)
+                if (antwort.abgemeldet) { abmelden(antwort.fehler ?: ""); break }
+                warteschlange = warteschlange + Wartend(antwort.wert, antwort.fehler, datei.name)
+            }
+            meldung = ""
         }
         geteiltErledigt()
     }
@@ -124,57 +166,103 @@ fun App(
     MaterialTheme(colorScheme = lightColorScheme(primary = Farben.Orange, background = Farben.Grund, onSurface = Farben.Tinte)) {
         Box(Modifier.fillMaxSize().background(Farben.Grund).safeDrawingPadding()) {
             val offen = detail
-            if (offen != null) {
-                LaufDetail(offen) { detail = null }
-            } else {
-                Startseite(
-                    zustand = zustand, laeufe = laeufe, name = name, meldung = meldung, beschaeftigt = beschaeftigt,
-                    appVersion = appVersion,
-                    nameAendern = { name = it; plattform.schreiben("laeufer", it.trim()) },
-                    laufOeffnen = { lauf ->
-                        scope.launch {
-                            val id = lauf.id ?: return@launch
-                            server.detail(id, geraetId).let { a -> if (a.wert != null) detail = a.wert else meldung = a.fehler ?: "" }
-                        }
-                    },
-                    healthConnect = {
-                        scope.launch {
-                            beschaeftigt = true
-                            meldung = when {
-                                !plattform.healthConnectVerfuegbar() -> "Health Connect ist auf diesem Handy nicht verfügbar."
-                                !plattform.healthConnectErlaubnis() -> "Ohne Erlaubnis kann die App keine Läufe aus Health Connect lesen."
-                                else -> {
-                                    val sitzungen = plattform.healthConnectSitzungen(60)
-                                    if (sitzungen.isEmpty()) "In Health Connect wurden keine Läufe der letzten 60 Tage gefunden."
-                                    else server.healthConnect(geraetId, name.trim(), sitzungen).let { it.wert ?: it.fehler ?: "" }
-                                }
-                            }
-                            neuLaden()
-                            beschaeftigt = false
-                        }
-                    },
-                    testPush = {
-                        scope.launch {
-                            beschaeftigt = true
-                            val token = plattform.pushToken()
-                            meldung = if (token == null) "Push ist in dieser App-Version nicht eingerichtet." else server.pushProbe(token)
-                            beschaeftigt = false
-                        }
-                    },
-                    nochmal = { scope.launch { zustand = ServerZustand.Laedt; zustand = server.status(); neuLaden() } },
+            when {
+                schluessel == null -> Willkommen(
+                    server = server, zustand = zustand, geraetId = geraetId, einladung = einladung,
+                    einladungErledigt = einladungErledigt, meldung = meldung, angemeldet = { angemeldet(it) },
+                    nochmal = { scope.launch { zustand = ServerZustand.Laedt; zustand = server.status() } },
                 )
+                offen != null -> LaufDetail(offen) { detail = null }
+                else -> Column(Modifier.fillMaxSize()) {
+                    Column(
+                        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 22.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Kopf(zustand)
+                        Text(if (bereich == Bereich.Laeufe) "Meine Läufe" else bereich.titel,
+                            color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
+                        if (zustand is ServerZustand.Fehler) {
+                            Button(onClick = { scope.launch { zustand = ServerZustand.Laedt; zustand = server.status(); neuLaden() } },
+                                colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Nochmal verbinden") }
+                        }
+                        if (meldung.isNotBlank()) Hinweis(meldung) { meldung = "" }
+                        when (bereich) {
+                            Bereich.Familie -> FamilieSeite(
+                                familie = familie, beschaeftigt = beschaeftigt,
+                                anlegen = { name ->
+                                    scope.launch {
+                                        beschaeftigt = true
+                                        pruefen(server.mitgliedAnlegen(name))?.let { plattform.teilen(it.text); meldung = "Einladung für $name erstellt." }
+                                        neuLaden()
+                                        beschaeftigt = false
+                                    }
+                                },
+                                einladen = { m ->
+                                    scope.launch {
+                                        beschaeftigt = true
+                                        pruefen(server.neueEinladung(m.id))?.let { plattform.teilen(it.text) }
+                                        neuLaden()
+                                        beschaeftigt = false
+                                    }
+                                },
+                            )
+                            Bereich.Laeufe -> LaeufeSeite(
+                                laeufe = laeufe, zustand = zustand, beschaeftigt = beschaeftigt,
+                                laufOeffnen = { lauf ->
+                                    scope.launch {
+                                        val id = lauf.id ?: return@launch
+                                        pruefen(server.detail(id))?.let { detail = it }
+                                    }
+                                },
+                                healthConnect = {
+                                    scope.launch {
+                                        beschaeftigt = true
+                                        meldung = when {
+                                            !plattform.healthConnectVerfuegbar() -> "Health Connect ist auf diesem Handy nicht verfügbar."
+                                            !plattform.healthConnectErlaubnis() -> "Ohne Erlaubnis kann die App keine Läufe aus Health Connect lesen."
+                                            else -> {
+                                                val sitzungen = plattform.healthConnectSitzungen(60)
+                                                if (sitzungen.isEmpty()) "In Health Connect wurden keine Läufe der letzten 60 Tage gefunden."
+                                                else server.healthConnect(geraetId, sitzungen).let { pruefen(it) ?: meldung }
+                                            }
+                                        }
+                                        neuLaden()
+                                        beschaeftigt = false
+                                    }
+                                },
+                            )
+                            Bereich.Rangliste -> RanglisteSeite()
+                            Bereich.Ich -> IchSeite(
+                                ich = familie?.ich, appVersion = appVersion, beschaeftigt = beschaeftigt,
+                                farbeWaehlen = { farbe ->
+                                    scope.launch { pruefen(server.farbeAendern(farbe)); neuLaden() }
+                                },
+                                testPush = {
+                                    scope.launch {
+                                        beschaeftigt = true
+                                        val token = plattform.pushToken()
+                                        meldung = if (token == null) "Push ist in dieser App-Version nicht eingerichtet." else server.pushProbe(token)
+                                        beschaeftigt = false
+                                    }
+                                },
+                                abmelden = { abmelden("Abgemeldet. Zum Wiederkommen brauchst du einen neuen Einladungslink.") },
+                            )
+                        }
+                    }
+                    Navigation(bereich) { bereich = it; if (it == Bereich.Familie || it == Bereich.Laeufe) scope.launch { neuLaden() } }
+                }
             }
 
             val oben = warteschlange.firstOrNull()
-            if (oben != null) {
+            if (oben != null && schluessel != null) {
                 Kontrollkarte(
-                    eintrag = oben, appVersion = appVersion, name = name, beschaeftigt = beschaeftigt,
-                    nameAendern = { name = it; plattform.schreiben("laeufer", it.trim()) },
+                    eintrag = oben, appVersion = appVersion, beschaeftigt = beschaeftigt,
                     speichern = { v ->
                         scope.launch {
                             beschaeftigt = true
-                            val a = server.bestaetigen(v.entwurf, geraetId, name.trim(), plattform.pushToken())
-                            meldung = a.wert ?: a.fehler ?: ""
+                            val a = server.bestaetigen(v.entwurf, geraetId, plattform.pushToken())
+                            pruefen(a)?.let { meldung = it }
                             warteschlange = warteschlange.drop(1)
                             neuLaden()
                             beschaeftigt = false
@@ -188,75 +276,74 @@ fun App(
 }
 
 @Composable
-private fun Startseite(
-    zustand: ServerZustand,
-    laeufe: List<LaufAnzeige>,
-    name: String,
-    meldung: String,
-    beschaeftigt: Boolean,
-    appVersion: String,
-    nameAendern: (String) -> Unit,
-    laufOeffnen: (LaufAnzeige) -> Unit,
-    healthConnect: () -> Unit,
-    testPush: () -> Unit,
-    nochmal: () -> Unit,
-) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                buildAnnotatedString { append("SCHWEINEHUND"); withStyle(SpanStyle(color = Farben.Orange)) { append(".") } },
-                color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = 1.4.sp,
-                modifier = Modifier.weight(1f),
-            )
-            val punkt = when (zustand) {
-                is ServerZustand.Erreichbar -> Farben.Gruen
-                is ServerZustand.Fehler -> Farben.Orange
-                ServerZustand.Laedt -> Farben.Hell
-            }
-            Box(Modifier.size(8.dp).clip(CircleShape).background(punkt))
-            Spacer(Modifier.size(6.dp))
-            Text(statusText(zustand), color = Farben.Grau, fontSize = 12.sp)
+fun Kopf(zustand: ServerZustand) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            buildAnnotatedString { append("SCHWEINEHUND"); withStyle(SpanStyle(color = Farben.Orange)) { append(".") } },
+            color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = 1.4.sp,
+            modifier = Modifier.weight(1f),
+        )
+        val punkt = when (zustand) {
+            is ServerZustand.Erreichbar -> Farben.Gruen
+            is ServerZustand.Fehler -> Farben.Orange
+            ServerZustand.Laedt -> Farben.Hell
         }
-        Text("Meine Läufe", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
-
-        if (zustand is ServerZustand.Fehler) {
-            Button(onClick = nochmal, colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Nochmal verbinden") }
-        }
-        if (meldung.isNotBlank()) {
-            Text(meldung, color = Farben.Tinte, fontSize = 14.sp,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Farben.OrangeHell).padding(12.dp))
-        }
-
-        Karte(dunkel = true) {
-            Text("SO KOMMT EIN LAUF REIN", color = Farben.Hell, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.4.sp)
-            Text("Huawei Health: Lauf öffnen → Route exportieren → GPX → Teilen → Schweinehund.",
-                color = Farben.Weiss, fontSize = 15.sp, lineHeight = 21.sp)
-            Text("Garmin: läuft über Health Connect – einmal abgleichen genügt. Das Teilen-Bild bringt Puls und Kadenz dazu.",
-                color = Farben.Hell, fontSize = 13.sp, lineHeight = 19.sp)
-            Button(onClick = healthConnect, enabled = !beschaeftigt, shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Health Connect abgleichen") }
-        }
-
-        OutlinedTextField(value = name, onValueChange = nameAendern, singleLine = true,
-            label = { Text("Dein Name in der Familie") }, modifier = Modifier.fillMaxWidth())
-
-        if (laeufe.isEmpty() && zustand is ServerZustand.Erreichbar) {
-            Text("Noch keine Läufe. Teile deinen ersten Lauf an Schweinehund – Horst wartet (ungern).",
-                color = Farben.Grau, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 16.sp)
-        }
-        laeufe.forEach { lauf -> LaufZeile(lauf) { laufOeffnen(lauf) } }
-
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = testPush, enabled = !beschaeftigt) { Text("Test-Push anfordern", color = Farben.Tinte) }
-        Text("App v$appVersion", color = Farben.Grau, fontSize = 12.sp)
+        Box(Modifier.size(8.dp).clip(CircleShape).background(punkt))
+        Spacer(Modifier.size(6.dp))
+        Text(statusText(zustand), color = Farben.Grau, fontSize = 12.sp)
     }
 }
 
 @Composable
-private fun Karte(dunkel: Boolean = false, inhalt: @Composable () -> Unit) {
+fun Hinweis(text: String, weg: (() -> Unit)? = null) {
+    Text(text, color = Farben.Tinte, fontSize = 14.sp,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Farben.OrangeHell)
+            .let { if (weg != null) it.clickable(onClick = weg) else it }.padding(12.dp))
+}
+
+@Composable
+private fun Navigation(aktiv: Bereich, waehlen: (Bereich) -> Unit) {
+    NavigationBar(containerColor = Farben.Weiss, tonalElevation = 0.dp) {
+        Bereich.entries.forEach { b ->
+            NavigationBarItem(
+                selected = b == aktiv,
+                onClick = { waehlen(b) },
+                icon = { Text(b.zeichen, fontSize = 20.sp) },
+                label = { Text(b.titel, fontSize = 12.sp, fontWeight = if (b == aktiv) FontWeight.Bold else FontWeight.Normal) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedTextColor = Farben.Tinte, unselectedTextColor = Farben.Grau, indicatorColor = Farben.OrangeHell),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LaeufeSeite(
+    laeufe: List<LaufAnzeige>,
+    zustand: ServerZustand,
+    beschaeftigt: Boolean,
+    laufOeffnen: (LaufAnzeige) -> Unit,
+    healthConnect: () -> Unit,
+) {
+    Karte(dunkel = true) {
+        Text("SO KOMMT EIN LAUF REIN", color = Farben.Hell, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.4.sp)
+        Text("Huawei Health: Lauf öffnen → Route exportieren → GPX → Teilen → Schweinehund.",
+            color = Farben.Weiss, fontSize = 15.sp, lineHeight = 21.sp)
+        Text("Garmin: Zahlen über Health Connect abgleichen; die Strecke als GPX von connect.garmin.com teilen. " +
+            "Das Huawei-Teilen-Bild bringt Puls, Kadenz und Schritte dazu.",
+            color = Farben.Hell, fontSize = 13.sp, lineHeight = 19.sp)
+        Button(onClick = healthConnect, enabled = !beschaeftigt, shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Health Connect abgleichen") }
+    }
+    if (laeufe.isEmpty() && zustand is ServerZustand.Erreichbar) {
+        Text("Noch keine Läufe. Teile deinen ersten Lauf an Schweinehund – Horst wartet (ungern).",
+            color = Farben.Grau, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 16.sp)
+    }
+    laeufe.forEach { lauf -> LaufZeile(lauf) { laufOeffnen(lauf) } }
+}
+
+@Composable
+fun Karte(dunkel: Boolean = false, inhalt: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(if (dunkel) Farben.Schiefer else Farben.Weiss).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -284,9 +371,7 @@ private fun LaufZeile(lauf: LaufAnzeige, oeffnen: () -> Unit) {
 private fun Kontrollkarte(
     eintrag: Wartend,
     appVersion: String,
-    name: String,
     beschaeftigt: Boolean,
-    nameAendern: (String) -> Unit,
     speichern: (Vorschau) -> Unit,
     verwerfen: () -> Unit,
 ) {
@@ -309,15 +394,11 @@ private fun Kontrollkarte(
             Text(listOfNotNull(l.startText, l.tempo, l.anstiegM?.let { "↑ $it m" }, l.puls?.let { "Puls $it" }, l.kadenz?.let { "Kadenz $it" })
                 .joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
             if (l.linie.size >= 2) Strecke(l.linie, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)).background(Farben.Grund))
-            if (name.isBlank()) {
-                OutlinedTextField(value = name, onValueChange = nameAendern, singleLine = true,
-                    label = { Text("Wer ist gelaufen? (dein Name)") }, modifier = Modifier.fillMaxWidth())
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = verwerfen, enabled = !beschaeftigt, modifier = Modifier.weight(1f).height(50.dp)) {
                     Text("Verwerfen", color = Farben.Tinte)
                 }
-                Button(onClick = { speichern(v) }, enabled = !beschaeftigt && name.isNotBlank(),
+                Button(onClick = { speichern(v) }, enabled = !beschaeftigt,
                     modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Speichern", fontWeight = FontWeight.Bold) }
             }

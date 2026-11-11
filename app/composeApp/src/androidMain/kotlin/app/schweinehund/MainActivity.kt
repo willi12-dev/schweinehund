@@ -27,6 +27,9 @@ class MainActivity : ComponentActivity() {
     /** Dateien, die gerade über „Teilen“ hereinkamen – die App verarbeitet und leert die Liste. */
     private val geteilt = mutableStateOf<List<GeteilteDatei>>(emptyList())
 
+    /** Einladungscode aus einem angetippten Link (https://…/e/CODE). */
+    private val einladung = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -49,6 +52,8 @@ class MainActivity : ComponentActivity() {
                 appVersion = "${BuildConfig.VERSION_NAME} · Bau ${BuildConfig.BAU}",
                 geteilt = geteilt.value,
                 geteiltErledigt = { geteilt.value = emptyList() },
+                einladung = einladung.value,
+                einladungErledigt = { einladung.value = null },
             )
         }
     }
@@ -60,6 +65,11 @@ class MainActivity : ComponentActivity() {
 
     private fun uebernehmen(intent: Intent?) {
         if (intent == null) return
+        if (intent.action == Intent.ACTION_VIEW) {
+            val code = intent.data?.toString()?.let { einladungsCode(it) }
+            if (!code.isNullOrBlank()) einladung.value = code
+            return
+        }
         val uris: List<Uri> = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(
                 if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)

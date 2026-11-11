@@ -58,6 +58,8 @@ android {
         versionCode = appVersion.split(".").let { it[0].toInt() * 10000 + it[1].toInt() * 100 + it[2].toInt() }
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "BAU", "\"$bauNummer\"")
+        // Einladungslinks zeigen auf den Server – Android öffnet sie direkt in der App (REQ-002).
+        manifestPlaceholders["einladungHost"] = java.net.URI(serverUrl).host ?: "localhost"
     }
     // Feste Testsignatur (nur für Test-Versionen, Passwort ist bewusst kein Geheimnis): so lässt sich jede neue
     // Test-App über die alte installieren. Für eine echte Veröffentlichung kommt ein eigener Schlüssel als Secret.

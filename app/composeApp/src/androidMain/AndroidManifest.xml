@@ -36,6 +36,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!-- REQ-002: Einladungslinks (https://<server>/e/CODE) direkt in der App öffnen -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${einladungHost}" android:pathPrefix="/e/" />
+            </intent-filter>
             <!-- Health Connect (Android 13 und älter): Erklärung, wofür die App die Daten braucht -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />

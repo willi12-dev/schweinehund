@@ -3,6 +3,7 @@ package app.schweinehund
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.health.connect.client.HealthConnectClient
@@ -54,6 +55,14 @@ class AndroidPlattform(
 
     override fun schreiben(schluessel: String, wert: String) {
         einstellungen.edit().putString(schluessel, wert).apply()
+    }
+
+    override fun teilen(text: String) {
+        val senden = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(senden, "Einladung verschicken").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override suspend fun pushToken(): String? = try {

@@ -64,4 +64,38 @@ class ServerDienstTest {
         assertEquals("83", tausender(83))
         assertEquals("12.345.678", tausender(12345678))
     }
+
+    @Test
+    fun einladungscodeAusLinkOderEingabe() {
+        assertEquals("ABCD234567", einladungsCode("https://x.eu.pythonanywhere.com/e/ABCD234567"))
+        assertEquals("ABCD234567", einladungsCode(" abcd-2345 67 "))
+        assertEquals("ABCD234567", einladungsCode("https://x/e/abcd234567?utm=1"))
+    }
+
+    @Test
+    fun familieUndAnmeldungLesen() {
+        val json = """{"ok": true, "ich": {"id": 1, "name": "Testläufer A", "farbe": "#EF7448", "kuerzel": "Te", "rolle": "verwalter"},
+            "mitglieder": [{"id": 1, "name": "Testläufer A", "farbe": "#EF7448", "kuerzel": "Te", "rolle": "verwalter", "ich": true,
+              "beigetreten": true, "einladung_offen": false, "letzter_lauf": {"start_text": "Mo 01.06. 06:13", "distanz_km": "4,93"},
+              "km_woche": "8,21", "laeufe_woche": 2},
+             {"id": 2, "name": "Testläufer B", "farbe": "#5B8DEF", "kuerzel": "Te", "rolle": "mitglied", "ich": false,
+              "beigetreten": false, "einladung_offen": true, "letzter_lauf": null, "km_woche": "0", "laeufe_woche": 0}]}"""
+        val f = familieLesen(json, 200).wert!!
+        assertTrue(f.ich.istVerwalter)
+        assertEquals("Mo 01.06. 06:13 · 4,93 km", f.mitglieder[0].letzterLauf)
+        assertEquals("8,21", f.mitglieder[0].kmWoche)
+        assertTrue(f.mitglieder[1].einladungOffen && !f.mitglieder[1].beigetreten)
+        assertNull(f.mitglieder[1].letzterLauf)
+
+        val a = anmeldungLesen("""{"ok": true, "schluessel": "geheim", "ich": {"id": 2, "name": "B", "farbe": "#5B8DEF", "kuerzel": "B", "rolle": "mitglied"}}""", 200)
+        assertEquals("geheim", a.wert!!.schluessel)
+        val weg = familieLesen("""{"ok": false, "fehler": "Nicht angemeldet"}""", 401)
+        assertTrue(weg.abgemeldet && weg.wert == null)
+    }
+
+    @Test
+    fun farbeAusHex() {
+        assertEquals(farbe("#EF7448"), farbe("EF7448"))
+        assertEquals(Farben.Grau, farbe("rot"))
+    }
 }

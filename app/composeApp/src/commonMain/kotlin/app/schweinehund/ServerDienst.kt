@@ -4,7 +4,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -33,7 +35,7 @@ import kotlinx.serialization.json.putJsonArray
 /** Was die App über den Server weiß. */
 sealed interface ServerZustand {
     data object Laedt : ServerZustand
-    data class Erreichbar(val version: String, val push: String) : ServerZustand
+    data class Erreichbar(val version: String, val push: String, val familie: Boolean = true) : ServerZustand
     data class Fehler(val grund: String) : ServerZustand
 }
 
@@ -61,8 +63,33 @@ data class LaufAnzeige(
     val linie: List<Pair<Float, Float>>,
 )
 
-/** Antwort des Servers: entweder ein Wert oder ein Satz, was schiefging. */
-data class Antwort<T>(val wert: T?, val fehler: String?)
+/** Antwort des Servers: entweder ein Wert oder ein Satz, was schiefging. abgemeldet = Schlüssel ungültig (401). */
+data class Antwort<T>(val wert: T?, val fehler: String?, val abgemeldet: Boolean = false)
+
+/** Ein Familienmitglied (REQ-002). */
+data class Mitglied(
+    val id: Long,
+    val name: String,
+    val farbe: String,
+    val kuerzel: String,
+    val rolle: String,
+    val ich: Boolean = false,
+    val beigetreten: Boolean = true,
+    val einladungOffen: Boolean = false,
+    val letzterLauf: String? = null,
+    val kmWoche: String = "0",
+    val laeufeWoche: Int = 0,
+) {
+    val istVerwalter: Boolean get() = rolle == "verwalter"
+}
+
+/** Ergebnis von Gründen oder Einlösen: der geheime Schlüssel für dieses Handy und wer man ist. */
+data class Anmeldung(val schluessel: String, val ich: Mitglied)
+
+data class Familienstand(val ich: Mitglied, val mitglieder: List<Mitglied>)
+
+/** Fertiger Einladungstext für WhatsApp. */
+data class Einladung(val text: String, val link: String, val code: String)
 
 data class Vorschau(val entwurf: String, val lauf: LaufAnzeige)
 
@@ -80,7 +107,8 @@ private fun JsonElement?.text(): String? = (this as? JsonPrimitive)?.takeIf { it
 fun statusLesen(json: String): ServerZustand {
     val obj = Json.parseToJsonElement(json).jsonObject
     val version = obj["version"].text() ?: return ServerZustand.Fehler("Antwort ohne Version")
-    return ServerZustand.Erreichbar(version, obj["push"].text() ?: "unbekannt")
+    val familie = (obj["familie"] as? JsonPrimitive)?.booleanOrNull ?: true
+    return ServerZustand.Erreichbar(version, obj["push"].text() ?: "unbekannt", familie)
 }
 
 fun probeLesen(json: String, httpCode: Int): String {
@@ -112,10 +140,42 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     } ?: emptyList(),
 )
 
+fun mitgliedLesen(obj: JsonObject): Mitglied {
+    val letzter = obj["letzter_lauf"] as? JsonObject
+    return Mitglied(
+        id = obj["id"]!!.jsonPrimitive.longOrNull ?: 0,
+        name = obj["name"].text() ?: "?",
+        farbe = obj["farbe"].text() ?: "#8A94A6",
+        kuerzel = obj["kuerzel"].text() ?: "?",
+        rolle = obj["rolle"].text() ?: "mitglied",
+        ich = (obj["ich"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        beigetreten = (obj["beigetreten"] as? JsonPrimitive)?.booleanOrNull ?: true,
+        einladungOffen = (obj["einladung_offen"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        letzterLauf = letzter?.let { "${it["start_text"].text() ?: ""} · ${it["distanz_km"].text() ?: "–"} km" },
+        kmWoche = obj["km_woche"].text() ?: "0",
+        laeufeWoche = (obj["laeufe_woche"] as? JsonPrimitive)?.intOrNull ?: 0,
+    )
+}
+
+fun anmeldungLesen(json: String, code: Int): Antwort<Anmeldung> =
+    auswerten(json, code) { Anmeldung(it["schluessel"].text()!!, mitgliedLesen(it["ich"]!!.jsonObject)) }
+
+fun familieLesen(json: String, code: Int): Antwort<Familienstand> =
+    auswerten(json, code) { o ->
+        Familienstand(mitgliedLesen(o["ich"]!!.jsonObject).copy(ich = true), o["mitglieder"]!!.jsonArray.map { mitgliedLesen(it.jsonObject) })
+    }
+
+fun einladungLesen(json: String, code: Int): Antwort<Einladung> =
+    auswerten(json, code) { Einladung(it["text"].text()!!, it["link"].text()!!, it["code"].text()!!) }
+
+/** Einladungscode aus einem Link („…/e/ABCD…“) oder einer Eingabe – nur Großbuchstaben und Ziffern. */
+fun einladungsCode(eingabe: String): String =
+    eingabe.substringAfterLast("/e/").substringBefore("?").uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+
 private fun <T> auswerten(json: String, code: Int, lesen: (JsonObject) -> T): Antwort<T> {
     val obj = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull()
-        ?: return Antwort(null, "Unerwartete Antwort vom Server ($code).")
-    if (obj["ok"]?.jsonPrimitive?.booleanOrNull != true) return Antwort(null, obj["fehler"].text() ?: "Fehler $code")
+        ?: return Antwort(null, "Unerwartete Antwort vom Server ($code).", abgemeldet = code == 401)
+    if (obj["ok"]?.jsonPrimitive?.booleanOrNull != true) return Antwort(null, obj["fehler"].text() ?: "Fehler $code", abgemeldet = code == 401)
     return runCatching { Antwort(lesen(obj), null) }.getOrElse { Antwort(null, "Antwort nicht lesbar.") }
 }
 
@@ -141,6 +201,58 @@ fun standardClient(): HttpClient = HttpClient {
 }
 
 class ServerDienst(private val basis: String, private val client: HttpClient = standardClient()) {
+
+    /** Geheimer Schlüssel dieses Handys (nach Gründen oder Einladung); geht bei jeder Anfrage mit. */
+    var schluessel: String? = null
+
+    private fun HttpRequestBuilder.anmelden() {
+        schluessel?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+    }
+
+    private fun json(builder: HttpRequestBuilder, inhalt: JsonObject) {
+        builder.anmelden()
+        builder.contentType(ContentType.Application.Json)
+        builder.setBody(inhalt.toString())
+    }
+
+    suspend fun gruenden(name: String, farbe: String?, geraetId: String): Antwort<Anmeldung> = sicher {
+        val (text, code) = client.post("$basis/api/familie/gruenden") {
+            json(this, buildJsonObject { put("name", name); put("geraet_id", geraetId); farbe?.let { put("farbe", it) } })
+        }.text()
+        anmeldungLesen(text, code)
+    }
+
+    suspend fun einladungAnsehen(code: String): Antwort<String> = sicher {
+        val (text, status) = client.get("$basis/api/einladung/$code").text()
+        auswerten(text, status) { it["name"].text() ?: "?" }
+    }
+
+    suspend fun einloesen(code: String, geraetId: String): Antwort<Anmeldung> = sicher {
+        val (text, status) = client.post("$basis/api/einladung/$code") {
+            json(this, buildJsonObject { put("geraet_id", geraetId) })
+        }.text()
+        anmeldungLesen(text, status)
+    }
+
+    suspend fun familie(): Antwort<Familienstand> = sicher {
+        val (text, code) = client.get("$basis/api/familie") { anmelden() }.text()
+        familieLesen(text, code)
+    }
+
+    suspend fun mitgliedAnlegen(name: String): Antwort<Einladung> = sicher {
+        val (text, code) = client.post("$basis/api/mitglieder") { json(this, buildJsonObject { put("name", name) }) }.text()
+        einladungLesen(text, code)
+    }
+
+    suspend fun neueEinladung(mitgliedId: Long): Antwort<Einladung> = sicher {
+        val (text, code) = client.post("$basis/api/mitglieder/$mitgliedId/einladung") { json(this, buildJsonObject { }) }.text()
+        einladungLesen(text, code)
+    }
+
+    suspend fun farbeAendern(farbe: String): Antwort<Mitglied> = sicher {
+        val (text, code) = client.post("$basis/api/ich") { json(this, buildJsonObject { put("farbe", farbe) }) }.text()
+        auswerten(text, code) { mitgliedLesen(it["ich"]!!.jsonObject) }
+    }
 
     private suspend fun <T> sicher(block: suspend () -> Antwort<T>): Antwort<T> =
         try { block() } catch (e: Exception) {
@@ -173,6 +285,7 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
     suspend fun vorschauDatei(datei: GeteilteDatei): Antwort<Vorschau> = sicher {
         val (text, code) = client.submitFormWithBinaryData(
             url = "$basis/api/laeufe/vorschau",
+            block = { anmelden() },
             formData = formData {
                 append("datei", datei.daten, Headers.build {
                     append(HttpHeaders.ContentType, datei.mime.ifBlank { "application/octet-stream" })
@@ -185,28 +298,25 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
 
     suspend fun vorschauText(erkannt: String): Antwort<Vorschau> = sicher {
         val (text, code) = client.post("$basis/api/laeufe/vorschau") {
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("text", erkannt) }.toString())
+            json(this, buildJsonObject { put("text", erkannt) })
         }.text()
         vorschauLesen(text, code)
     }
 
-    suspend fun bestaetigen(entwurf: String, geraetId: String, laeufer: String, pushToken: String?): Antwort<String> = sicher {
+    suspend fun bestaetigen(entwurf: String, geraetId: String, pushToken: String?): Antwort<String> = sicher {
         val (text, code) = client.post("$basis/api/laeufe/bestaetigen") {
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject {
-                put("entwurf", entwurf); put("geraet_id", geraetId); put("laeufer", laeufer)
+            json(this, buildJsonObject {
+                put("entwurf", entwurf); put("geraet_id", geraetId)
                 if (pushToken != null) put("push_token", pushToken)
-            }.toString())
+            })
         }.text()
         auswerten(text, code) { it["text"].text() ?: "Gespeichert." }
     }
 
-    suspend fun healthConnect(geraetId: String, laeufer: String, sitzungen: List<HcSitzung>): Antwort<String> = sicher {
+    suspend fun healthConnect(geraetId: String, sitzungen: List<HcSitzung>): Antwort<String> = sicher {
         val (text, code) = client.post("$basis/api/laeufe/health-connect") {
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject {
-                put("geraet_id", geraetId); put("laeufer", laeufer)
+            json(this, buildJsonObject {
+                put("geraet_id", geraetId)
                 putJsonArray("sitzungen") {
                     sitzungen.forEach { s ->
                         add(buildJsonObject {
@@ -217,7 +327,7 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
                         })
                     }
                 }
-            }.toString())
+            })
         }.text()
         auswerten(text, code) {
             val neu = it["neu"]?.jsonPrimitive?.intOrNull ?: 0
@@ -226,13 +336,13 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         }
     }
 
-    suspend fun liste(geraetId: String): Antwort<List<LaufAnzeige>> = sicher {
-        val (text, code) = client.get("$basis/api/laeufe?geraet_id=$geraetId").text()
+    suspend fun liste(): Antwort<List<LaufAnzeige>> = sicher {
+        val (text, code) = client.get("$basis/api/laeufe") { anmelden() }.text()
         auswerten(text, code) { o -> o["laeufe"]!!.jsonArray.map { laufLesen(it.jsonObject) } }
     }
 
-    suspend fun detail(id: Long, geraetId: String): Antwort<LaufAnzeige> = sicher {
-        val (text, code) = client.get("$basis/api/laeufe/$id?geraet_id=$geraetId").text()
+    suspend fun detail(id: Long): Antwort<LaufAnzeige> = sicher {
+        val (text, code) = client.get("$basis/api/laeufe/$id") { anmelden() }.text()
         auswerten(text, code) { laufLesen(it["lauf"]!!.jsonObject) }
     }
 }
@@ -246,4 +356,6 @@ interface Plattform {
     suspend fun healthConnectVerfuegbar(): Boolean
     suspend fun healthConnectErlaubnis(): Boolean
     suspend fun healthConnectSitzungen(tage: Int): List<HcSitzung>
+    /** Text über die Teilen-Leiste verschicken (Einladung per WhatsApp). */
+    fun teilen(text: String)
 }
