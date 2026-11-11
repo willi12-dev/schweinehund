@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.3.0 (in Entwicklung)
+- REQ-002 Grundgerüst: Familie gründen (erster = Verwalter), Mitglieder per Einladungslink über WhatsApp
+  (einmal gültig, 7 Tage, auch als Code eintippbar), Anmeldung ohne Passwort per Handy-Schlüssel.
+- Neuer Link für ein Mitglied meldet dessen altes Handy ab; Läufe aus dem Datentest gehen beim Beitreten über.
+- Vier Bereiche: Familie (Wochenkilometer, letzter Lauf), Läufe, Rangliste (Platzhalter), Ich (Farbe, Abmelden).
+- Server liefert Daten nur noch mit gültigem Schlüssel; Einladungsseite im Browser, App-Links (assetlinks.json).
+- Datenbank-Änderung 5: Mitglieder und Einladungen, Läufe gehören einem Mitglied.
+
 ## v0.2.0 (11.11.2026)
 - REQ-001 Datentest: Läufe per „Teilen“ übernehmen – GPX und TCX (Huawei Health, Garmin Connect), Teilen-Bild
   per Texterkennung auf dem Handy (Puls, Kadenz, Schritte), Läufe aus Health Connect (Garmin).
