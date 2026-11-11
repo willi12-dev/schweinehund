@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
             hcErlaubnis.launch(rechte)
             warten.await()
         }
+        plattform.aktivitaet = this
         setContent {
             App(
                 server = ServerDienst(BuildConfig.SERVER_URL),

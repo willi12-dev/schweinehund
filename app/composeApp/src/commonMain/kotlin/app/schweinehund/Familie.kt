@@ -167,6 +167,10 @@ fun Willkommen(
 fun FamilieSeite(
     familie: Familienstand?,
     beschaeftigt: Boolean,
+    einladung: Pair<String, Einladung>?,
+    einladungTeilen: (Einladung) -> Unit,
+    einladungKopieren: (Einladung) -> Unit,
+    einladungSchliessen: () -> Unit,
     anlegen: (String) -> Unit,
     oeffnen: (Mitglied) -> Unit,
     einladen: (Mitglied) -> Unit,
@@ -176,6 +180,20 @@ fun FamilieSeite(
         return
     }
     val verwalter = familie.ich.istVerwalter
+    einladung?.let { (name, e) ->
+        Karte(dunkel = true) {
+            Text("EINLADUNG FÜR ${name.uppercase()}", color = Farben.Hell, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.4.sp)
+            Text("Code: ${e.code}", color = Farben.Weiss, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+            Text(e.link, color = Farben.Hell, fontSize = 13.sp)
+            Text("Gilt 7 Tage und nur einmal. Hat sich keine Teilen-Leiste geöffnet: Text kopieren und in WhatsApp einfügen.",
+                color = Farben.Hell, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { einladungTeilen(e) }, colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Teilen") }
+                OutlinedButton(onClick = { einladungKopieren(e) }) { Text("Text kopieren", color = Farben.Weiss) }
+            }
+            TextButton(onClick = einladungSchliessen) { Text("Fertig", color = Farben.Hell) }
+        }
+    }
     familie.mitglieder.forEach { m -> MitgliedKarte(m, verwalter, beschaeftigt, { oeffnen(m) }) { einladen(m) } }
 
     if (verwalter) {

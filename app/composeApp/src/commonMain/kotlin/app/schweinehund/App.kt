@@ -126,6 +126,7 @@ fun App(
     var nachrichten by remember { mutableStateOf<List<Nachricht>>(emptyList()) }
     var ungelesen by remember { mutableStateOf(0) }
     val hauptScroll = rememberScrollState()
+    var einladungFuer by remember { mutableStateOf<Pair<String, Einladung>?>(null) }   // zuletzt erstellte Einladung
     val scope = rememberCoroutineScope()
 
     fun abmelden(grund: String) {
@@ -186,6 +187,11 @@ fun App(
                 if (neu.isNotEmpty()) nachrichten = nachrichten + neu.filter { n -> nachrichten.none { it.id == n.id } }
             }
         }
+    }
+
+    // Meldungen stehen oben – dorthin rollen, damit sie nicht unbemerkt bleiben
+    LaunchedEffect(meldung) {
+        if (meldung.isNotBlank() && bereich != Bereich.Chat) hauptScroll.animateScrollTo(0)
     }
 
     // Neue Nachrichten im Chat: nach unten rollen
@@ -300,10 +306,17 @@ fun App(
                         when (bereich) {
                             Bereich.Familie -> FamilieSeite(
                                 familie = familie, beschaeftigt = beschaeftigt,
+                                einladung = einladungFuer,
+                                einladungTeilen = { e -> if (!plattform.teilen(e.text)) meldung = "Teilen ging nicht – nutze „Text kopieren“." },
+                                einladungKopieren = { e -> plattform.kopieren(e.text); meldung = "Einladung kopiert – jetzt in WhatsApp einfügen." },
+                                einladungSchliessen = { einladungFuer = null },
                                 anlegen = { name ->
                                     scope.launch {
                                         beschaeftigt = true
-                                        pruefen(server.mitgliedAnlegen(name))?.let { plattform.teilen(it.text); meldung = "Einladung für $name erstellt." }
+                                        pruefen(server.mitgliedAnlegen(name))?.let { e ->
+                                            einladungFuer = name to e
+                                            if (!plattform.teilen(e.text)) meldung = "Teilen ging nicht – nutze „Text kopieren“."
+                                        }
                                         neuLaden()
                                         beschaeftigt = false
                                     }
@@ -317,7 +330,10 @@ fun App(
                                 einladen = { m ->
                                     scope.launch {
                                         beschaeftigt = true
-                                        pruefen(server.neueEinladung(m.id))?.let { plattform.teilen(it.text) }
+                                        pruefen(server.neueEinladung(m.id))?.let { e ->
+                                            einladungFuer = m.name to e
+                                            if (!plattform.teilen(e.text)) meldung = "Teilen ging nicht – nutze „Text kopieren“."
+                                        }
                                         neuLaden()
                                         beschaeftigt = false
                                     }

@@ -681,5 +681,7 @@ interface Plattform {
     suspend fun healthConnectErlaubnis(): Boolean
     suspend fun healthConnectSitzungen(tage: Int): List<HcSitzung>
     /** Text über die Teilen-Leiste verschicken (Einladung per WhatsApp). */
-    fun teilen(text: String)
+    fun teilen(text: String): Boolean
+    /** Text in die Zwischenablage (Ausweg, falls Teilen nicht klappt). */
+    fun kopieren(text: String)
 }

@@ -57,12 +57,28 @@ class AndroidPlattform(
         einstellungen.edit().putString(schluessel, wert).apply()
     }
 
-    override fun teilen(text: String) {
+    /** Die sichtbare Activity – Teilen-Leisten öffnen sich zuverlässig nur von dort (MainActivity setzt sie). */
+    var aktivitaet: android.app.Activity? = null
+
+    override fun teilen(text: String): Boolean {
         val senden = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }
-        context.startActivity(Intent.createChooser(senden, "Einladung verschicken").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val auswahl = Intent.createChooser(senden, "Einladung verschicken")
+        return try {
+            val a = aktivitaet
+            if (a != null && !a.isFinishing) a.startActivity(auswahl)
+            else context.startActivity(auswahl.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override fun kopieren(text: String) {
+        val zwischenablage = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        zwischenablage.setPrimaryClip(android.content.ClipData.newPlainText("Schweinehund-Einladung", text))
     }
 
     override suspend fun pushToken(): String? = try {
