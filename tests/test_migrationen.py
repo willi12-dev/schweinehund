@@ -64,7 +64,7 @@ def test_laeufe_aus_v020_bekommen_mitglied_spalte():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6, 7, 8]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6, 7, 8, 9]
     spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
     assert "mitglied_id" in spalten and con.execute("SELECT COUNT(*) FROM laeufe").fetchone()[0] == 1
     assert con.execute("SELECT 1 FROM sqlite_master WHERE name = 'laeufe_mitglied_start'").fetchone()
@@ -77,7 +77,8 @@ def test_v030_bekommt_sichtbarkeit():
     con = sqlite3.connect(pfad)
     alt = migrationen.schema_text()
     alt = alt.replace("    sichtbarkeit  TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: 'familie' oder 'ich' (Strecke nur für den Läufer)\n", "")
-    alt = alt.replace("    beigetreten TEXT,\n    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'   -- REQ-003: Sichtbarkeit neuer Läufe\n",
+    alt = alt.replace("    beigetreten TEXT,\n    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: Sichtbarkeit neuer Läufe\n"
+                      "    push_token  TEXT NOT NULL DEFAULT ''                    -- REQ-005: Firebase-Token des Handys\n",
                       "    beigetreten TEXT\n")
     assert "sichtbarkeit" not in alt
     con.executescript(alt)
@@ -86,7 +87,7 @@ def test_v030_bekommt_sichtbarkeit():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6, 7, 8]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6, 7, 8, 9]
     assert con.execute("SELECT sichtbarkeit FROM laeufe").fetchone()[0] == "familie"
     assert "standard_sichtbarkeit" in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}
 
@@ -100,7 +101,7 @@ def test_testdatensatz_legt_praxislaeufe_in_dieselbe_woche():
         con.execute("INSERT INTO laeufe (geraet_id, start, sichtbarkeit, angelegt, geaendert) VALUES ('g', ?, ?, 'x', 'x')", (start, sicht))
     con.execute("PRAGMA user_version = 6")
     con.commit()
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [7, 8]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [7, 8, 9]
     zeilen = [tuple(z) for z in con.execute("SELECT start, sichtbarkeit FROM laeufe ORDER BY id")]
     assert zeilen == [("2026-11-10T05:13:06+00:00", "familie"), ("2026-11-10T09:22:28+00:00", "familie"),
                       ("2026-05-28T03:42:46+00:00", "ich")]
@@ -117,6 +118,6 @@ def test_testdatensatz_ordnet_laeufe_dem_eingeladenen_mitglied_zu():
         con.execute("INSERT INTO laeufe (geraet_id, start, angelegt, geaendert) VALUES (?, ?, 'x', 'x')", (g, start))
     con.execute("PRAGMA user_version = 7")
     con.commit()
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [8]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [8, 9]
     assert [tuple(z) for z in con.execute("SELECT geraet_id, mitglied_id FROM laeufe ORDER BY id")] == [("g-b", 2), ("g-b", 2), ("g-c", None)]
     assert con.execute("SELECT geraet_id FROM mitglieder WHERE id = 2").fetchone()[0] == "g-b"

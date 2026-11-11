@@ -29,7 +29,7 @@ PY_VERSIONS = ["python313", "python312", "python311", "python310"]
 
 def dateien():
     """Alles, was der Server braucht – relativ zu server/."""
-    liste = ["app.py", "schema.sql"]
+    liste = ["app.py", "schema.sql", "aufgabe_sonntagsshow.py"]
     for ordner in ("kern", "schnittstelle"):
         liste += [str(p.relative_to(SERVER)) for p in sorted((SERVER / ordner).glob("*.py"))]
     return liste
@@ -120,6 +120,20 @@ def main():
             f'from app import app as application  # noqa\n')
     upload(f"/var/www/{domain.replace('.', '_').lower()}_wsgi.py", wsgi.encode())
     call("PATCH", f"webapps/{domain}/", expect=None, data={"force_https": "true"})
+
+    # 3b. Tägliche Aufgabe für die Sonntagsshow (REQ-005) – kostenloser Tarif: genau eine, feste UTC-Uhrzeit
+    pv = (apps.get(domain) or {}).get("python_version") or call("GET", f"webapps/{domain}/").json().get("python_version", "3.12")
+    ziffern = "".join(c for c in str(pv) if c.isdigit()) or "312"
+    befehl = f"python{ziffern[0]}.{ziffern[1:]} {appdir}/aufgabe_sonntagsshow.py"
+    r = call("GET", "schedule/", expect=None)
+    aufgaben = r.json() if r.status_code == 200 else []
+    if any("aufgabe_sonntagsshow.py" in a.get("command", "") for a in aufgaben):
+        print("  Tägliche Aufgabe Sonntagsshow vorhanden")
+    else:
+        r = call("POST", "schedule/", expect=None,
+                 data={"command": befehl, "enabled": "true", "interval": "daily", "hour": "18", "minute": "0"})
+        print("  Tägliche Aufgabe Sonntagsshow angelegt (18:00 UTC)" if r.status_code in (200, 201)
+              else f"  WARNUNG: Tägliche Aufgabe nicht angelegt ({r.status_code} {r.text[:200]}) – Push sonntags fehlt")
 
     # 4. Neu laden
     call("POST", f"webapps/{domain}/reload/")

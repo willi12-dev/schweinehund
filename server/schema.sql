@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS mitglieder (
     geraet_id   TEXT NOT NULL DEFAULT '',
     angelegt    TEXT NOT NULL,
     beigetreten TEXT,
-    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'   -- REQ-003: Sichtbarkeit neuer Läufe
+    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: Sichtbarkeit neuer Läufe
+    push_token  TEXT NOT NULL DEFAULT ''                    -- REQ-005: Firebase-Token des Handys
 );
 
 CREATE TABLE IF NOT EXISTS einladungen (
@@ -72,4 +73,12 @@ CREATE TABLE IF NOT EXISTS einladungen (
     mitglied_id INTEGER NOT NULL,
     gueltig_bis TEXT NOT NULL,
     angelegt    TEXT NOT NULL
+);
+
+-- REQ-005: Sonntagsshow – eingefrorener Stand je Woche (z. B. "2026-W46")
+CREATE TABLE IF NOT EXISTS shows (
+    woche         TEXT PRIMARY KEY,
+    erstellt      TEXT NOT NULL,
+    daten         TEXT NOT NULL,           -- JSON: Horst, Preise, Platzierung, Wette, ggf. Monat
+    push_gesendet TEXT                     -- wann der Push „Die Sonntagsshow ist da!“ rausging
 );

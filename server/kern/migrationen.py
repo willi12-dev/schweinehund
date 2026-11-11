@@ -87,6 +87,13 @@ def _schritt_8(con):
     protokoll(con, "Testdatensatz", f"{n} Läufe Mitglied {mitglied_id} zugeordnet")
 
 
+
+def _schritt_9(con):
+    """v0.6.0 (REQ-005): Sonntagsshow – Tabelle shows (aus schema.sql), Push-Schlüssel am Mitglied."""
+    if "push_token" not in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}:
+        con.execute("ALTER TABLE mitglieder ADD COLUMN push_token TEXT NOT NULL DEFAULT ''")
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -100,6 +107,7 @@ SCHRITTE = [
     (6, "v0.4.0: Sichtbarkeit pro Lauf (REQ-003)", _schritt_6),
     (7, "v0.4.0: Testdatensatz – Praxistest-Läufe in dieselbe Woche", _schritt_7),
     (8, "v0.4.0: Testdatensatz – Läufe dem eingeladenen Mitglied zuordnen", _schritt_8),
+    (9, "v0.6.0: Sonntagsshow (REQ-005)", _schritt_9),
 ]
 STAND = SCHRITTE[-1][0]
 
