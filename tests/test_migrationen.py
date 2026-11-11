@@ -64,7 +64,7 @@ def test_laeufe_aus_v020_bekommen_mitglied_spalte():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6, 7]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6, 7, 8]
     spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
     assert "mitglied_id" in spalten and con.execute("SELECT COUNT(*) FROM laeufe").fetchone()[0] == 1
     assert con.execute("SELECT 1 FROM sqlite_master WHERE name = 'laeufe_mitglied_start'").fetchone()
@@ -86,7 +86,7 @@ def test_v030_bekommt_sichtbarkeit():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6, 7]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6, 7, 8]
     assert con.execute("SELECT sichtbarkeit FROM laeufe").fetchone()[0] == "familie"
     assert "standard_sichtbarkeit" in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}
 
@@ -100,7 +100,23 @@ def test_testdatensatz_legt_praxislaeufe_in_dieselbe_woche():
         con.execute("INSERT INTO laeufe (geraet_id, start, sichtbarkeit, angelegt, geaendert) VALUES ('g', ?, ?, 'x', 'x')", (start, sicht))
     con.execute("PRAGMA user_version = 6")
     con.commit()
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [7]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [7, 8]
     zeilen = [tuple(z) for z in con.execute("SELECT start, sichtbarkeit FROM laeufe ORDER BY id")]
     assert zeilen == [("2026-11-10T05:13:06+00:00", "familie"), ("2026-11-10T09:22:28+00:00", "familie"),
                       ("2026-05-28T03:42:46+00:00", "ich")]
+
+
+def test_testdatensatz_ordnet_laeufe_dem_eingeladenen_mitglied_zu():
+    ordner = tempfile.mkdtemp()
+    pfad = os.path.join(ordner, "v7.db")
+    con = datenbank.verbinden(pfad)
+    migrationen.einrichten(con)
+    con.execute("INSERT INTO mitglieder (name, farbe, kuerzel, rolle, angelegt) VALUES ('A', '#EF7448', 'A', 'verwalter', 'x')")
+    con.execute("INSERT INTO mitglieder (name, farbe, kuerzel, rolle, angelegt) VALUES ('B', '#5B8DEF', 'B', 'mitglied', 'x')")
+    for g, start in (("g-b", "2026-11-10T09:22:28+00:00"), ("g-b", "2026-10-01T09:00:00+00:00"), ("g-c", "2026-10-02T09:00:00+00:00")):
+        con.execute("INSERT INTO laeufe (geraet_id, start, angelegt, geaendert) VALUES (?, ?, 'x', 'x')", (g, start))
+    con.execute("PRAGMA user_version = 7")
+    con.commit()
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [8]
+    assert [tuple(z) for z in con.execute("SELECT geraet_id, mitglied_id FROM laeufe ORDER BY id")] == [("g-b", 2), ("g-b", 2), ("g-c", None)]
+    assert con.execute("SELECT geraet_id FROM mitglieder WHERE id = 2").fetchone()[0] == "g-b"

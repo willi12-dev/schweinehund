@@ -71,6 +71,22 @@ def _schritt_7(con):
     con.execute("UPDATE laeufe SET sichtbarkeit = 'familie' WHERE start BETWEEN ? AND ?", TESTLAUF_FAMILIE)
 
 
+
+def _schritt_8(con):
+    """v0.4.0: Testdatensatz – Läufe vom Handy des Praxistest-Laufs 10.11. (Testläufer B) dem eingeladenen, noch nicht
+    beigetretenen Mitglied zuordnen. Nur eindeutig: genau ein Mitglied ohne Verwalter-Rolle."""
+    z = con.execute("SELECT geraet_id FROM laeufe WHERE start BETWEEN ? AND ? AND mitglied_id IS NULL LIMIT 1",
+                    TESTLAUF_FAMILIE).fetchone()
+    kandidaten = con.execute("SELECT id FROM mitglieder WHERE rolle = 'mitglied'").fetchall()
+    if z is None or len(kandidaten) != 1:
+        return
+    mitglied_id = kandidaten[0]["id"]
+    n = con.execute("UPDATE laeufe SET mitglied_id = ? WHERE geraet_id = ? AND mitglied_id IS NULL",
+                    (mitglied_id, z["geraet_id"])).rowcount
+    con.execute("UPDATE mitglieder SET geraet_id = ? WHERE id = ? AND geraet_id = ''", (z["geraet_id"], mitglied_id))
+    protokoll(con, "Testdatensatz", f"{n} Läufe Mitglied {mitglied_id} zugeordnet")
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -83,6 +99,7 @@ SCHRITTE = [
     (5, "v0.3.0: Familie und Mitglieder (REQ-002)", _schritt_5),
     (6, "v0.4.0: Sichtbarkeit pro Lauf (REQ-003)", _schritt_6),
     (7, "v0.4.0: Testdatensatz – Praxistest-Läufe in dieselbe Woche", _schritt_7),
+    (8, "v0.4.0: Testdatensatz – Läufe dem eingeladenen Mitglied zuordnen", _schritt_8),
 ]
 STAND = SCHRITTE[-1][0]
 
