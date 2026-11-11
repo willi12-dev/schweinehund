@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .env
-daten/
+/server/daten/
 *.db
 .gradle/
 build/
