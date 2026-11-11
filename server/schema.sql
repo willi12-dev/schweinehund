@@ -64,7 +64,9 @@ CREATE TABLE IF NOT EXISTS mitglieder (
     angelegt    TEXT NOT NULL,
     beigetreten TEXT,
     standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: Sichtbarkeit neuer Läufe
-    push_token  TEXT NOT NULL DEFAULT ''                    -- REQ-005: Firebase-Token des Handys
+    push_token  TEXT NOT NULL DEFAULT '',                   -- REQ-005: Firebase-Token des Handys
+    push_aus    TEXT NOT NULL DEFAULT '',                   -- REQ-006: abgeschaltete Push-Arten, z. B. "chat,lauf"
+    chat_gelesen INTEGER NOT NULL DEFAULT 0                 -- REQ-006: letzte gelesene Chatnachricht
 );
 
 CREATE TABLE IF NOT EXISTS einladungen (
@@ -81,4 +83,29 @@ CREATE TABLE IF NOT EXISTS shows (
     erstellt      TEXT NOT NULL,
     daten         TEXT NOT NULL,           -- JSON: Horst, Preise, Platzierung, Wette, ggf. Monat
     push_gesendet TEXT                     -- wann der Push „Die Sonntagsshow ist da!“ rausging
+);
+
+-- REQ-006: Familienchat (Menschen und Horst), Reaktionen und Kommentare an Läufen
+CREATE TABLE IF NOT EXISTS nachrichten (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    mitglied_id INTEGER,                   -- NULL = Horst
+    text        TEXT NOT NULL,
+    lauf_id     INTEGER,                   -- Horst-Meldungen verweisen auf den Lauf
+    zeit        TEXT NOT NULL              -- UTC, ISO
+);
+
+CREATE TABLE IF NOT EXISTS reaktionen (
+    lauf_id     INTEGER NOT NULL,
+    mitglied_id INTEGER NOT NULL,
+    emoji       TEXT NOT NULL,
+    zeit        TEXT NOT NULL,
+    PRIMARY KEY (lauf_id, mitglied_id, emoji)
+);
+
+CREATE TABLE IF NOT EXISTS kommentare (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lauf_id     INTEGER NOT NULL,
+    mitglied_id INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    zeit        TEXT NOT NULL
 );

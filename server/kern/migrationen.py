@@ -94,6 +94,16 @@ def _schritt_9(con):
         con.execute("ALTER TABLE mitglieder ADD COLUMN push_token TEXT NOT NULL DEFAULT ''")
 
 
+
+def _schritt_10(con):
+    """v0.7.0 (REQ-006): Chat, Reaktionen, Kommentare (aus schema.sql), Push-Einstellungen am Mitglied."""
+    spalten = {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}
+    if "push_aus" not in spalten:
+        con.execute("ALTER TABLE mitglieder ADD COLUMN push_aus TEXT NOT NULL DEFAULT ''")
+    if "chat_gelesen" not in spalten:
+        con.execute("ALTER TABLE mitglieder ADD COLUMN chat_gelesen INTEGER NOT NULL DEFAULT 0")
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -108,6 +118,7 @@ SCHRITTE = [
     (7, "v0.4.0: Testdatensatz – Praxistest-Läufe in dieselbe Woche", _schritt_7),
     (8, "v0.4.0: Testdatensatz – Läufe dem eingeladenen Mitglied zuordnen", _schritt_8),
     (9, "v0.6.0: Sonntagsshow (REQ-005)", _schritt_9),
+    (10, "v0.7.0: Chat, Reaktionen, Kommentare (REQ-006)", _schritt_10),
 ]
 STAND = SCHRITTE[-1][0]
 

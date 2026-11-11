@@ -72,18 +72,21 @@ def zugangstoken(k, post=None):
     return _zugang["token"]
 
 
-def nachricht(geraet_token, titel, text):
-    return {"message": {"token": geraet_token, "notification": {"title": titel, "body": text},
-                        "android": {"priority": "high", "notification": {"channel_id": "familie"}}}}
+def nachricht(geraet_token, titel, text, daten=None):
+    m = {"message": {"token": geraet_token, "notification": {"title": titel, "body": text},
+                     "android": {"priority": "high", "notification": {"channel_id": "familie"}}}}
+    if daten:
+        m["message"]["data"] = {str(k): str(v) for k, v in daten.items()}   # z. B. ziel=chat / ziel=lauf, lauf_id=12
+    return m
 
 
-def senden(geraet_token, titel, text, post=None):
+def senden(geraet_token, titel, text, post=None, daten=None):
     post = post or requests.post
     k = konto()
     if not k:
         raise PushFehler("Push ist auf dem Server noch nicht eingerichtet (Secret FIREBASE_KONTO fehlt).")
     try:
-        r = post(FCM_URL.format(projekt=k["project_id"]), timeout=20, json=nachricht(geraet_token, titel, text),
+        r = post(FCM_URL.format(projekt=k["project_id"]), timeout=20, json=nachricht(geraet_token, titel, text, daten),
                  headers={"Authorization": f"Bearer {zugangstoken(k, post)}"})
     except requests.RequestException as e:
         raise PushFehler(f"Firebase nicht erreichbar ({e.__class__.__name__}).")

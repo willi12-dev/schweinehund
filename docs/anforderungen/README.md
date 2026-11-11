@@ -8,7 +8,7 @@
 | REQ-003 | Läufe und Karte: Familien-Läufe, Detailansicht mit Karte, Sichtbarkeit pro Lauf | umgesetzt | v0.4.0 |
 | REQ-004 | Punkte und Rangliste: Leistungskilometer (100 m Anstieg = 1 km), Fortschritt, Dranbleiben, Familienziel / Horst-o-Meter | umgesetzt | v0.5.0 |
 | REQ-005 | Sonntagsshow: Member of the Week/Month, Sonderpreise (u. a. Bergziege), Einsatz der Woche | umgesetzt | v0.6.0 |
-| REQ-006 | Chat, Reaktionen und Push-Nachrichten | geplant | v0.7.0 |
+| REQ-006 | Chat, Reaktionen und Push-Nachrichten | in Entwicklung | v0.7.0 |
 | REQ-007 | Familienkarte: Felder erobern über alle Städte hinweg | geplant | v0.8.0 |
 | REQ-008 | Treffen-Bonus: gemeinsame Läufe zählen doppelt | geplant | v0.9.0 |
 | REQ-009 | Fernduell live | geplant | v0.10.0 |

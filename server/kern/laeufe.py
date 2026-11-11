@@ -126,8 +126,9 @@ def speichern(con, wem, lauf, quelle):
     return alt["id"], False
 
 
-def aus_health_connect(con, wem, sitzungen):
-    """sitzungen: Liste von dicts mit start, ende (ISO), distanz_m, anstieg_m, puls_avg, art. Ergebnis: (neu, ergänzt)."""
+def aus_health_connect(con, wem, sitzungen, neue_ids=None):
+    """sitzungen: Liste von dicts mit start, ende (ISO), distanz_m, anstieg_m, puls_avg, art. Ergebnis: (neu, ergänzt).
+    neue_ids (Liste) sammelt die Nummern neu angelegter Läufe."""
     neu = ergaenzt = 0
     for s in sitzungen[:200]:
         try:
@@ -138,7 +139,9 @@ def aus_health_connect(con, wem, sitzungen):
         lauf = {"start": start, "dauer_s": max(0.0, (ende - start).total_seconds()), "art": s.get("art") or "laufen",
                 "distanz_m": _float(s.get("distanz_m")), "anstieg_m": _float(s.get("anstieg_m")),
                 "puls_avg": _int(s.get("puls_avg")), "punkte": [], "km_zeiten": None}
-        _, ist_neu = speichern(con, wem, lauf, "health-connect")
+        lauf_id, ist_neu = speichern(con, wem, lauf, "health-connect")
+        if ist_neu and neue_ids is not None:
+            neue_ids.append(lauf_id)
         neu, ergaenzt = neu + ist_neu, ergaenzt + (not ist_neu)
     return neu, ergaenzt
 
@@ -222,21 +225,39 @@ def _fuer(z, ich_id, detail):
     return d
 
 
+def _mit_reaktionen(con, liste, ich_id):
+    from kern import chat   # erst hier: vermeidet Kreis-Import
+    r = chat.reaktionen(con, [l["id"] for l in liste], ich_id)
+    k = {z[0]: z[1] for z in con.execute(
+        "SELECT lauf_id, COUNT(*) FROM kommentare WHERE lauf_id IN (%s) GROUP BY lauf_id" % ",".join("?" * len(liste)),
+        [l["id"] for l in liste])} if liste else {}
+    for l in liste:
+        l["reaktionen"] = r.get(l["id"], [])
+        l["kommentare_anzahl"] = k.get(l["id"], 0)
+    return liste
+
+
 def liste(con, mitglied_id, ich_id=None, anzahl=50):
     """Die neuesten Läufe eines Mitglieds (auch ältere Läufe, die nachträglich geteilt werden)."""
+    ich_id = mitglied_id if ich_id is None else ich_id
     zeilen = con.execute(_MIT_MITGLIED + " WHERE l.mitglied_id = ? ORDER BY l.start DESC LIMIT ?", (mitglied_id, anzahl))
-    return [_fuer(z, mitglied_id if ich_id is None else ich_id, False) for z in zeilen]
+    return _mit_reaktionen(con, [_fuer(z, ich_id, False) for z in zeilen], ich_id)
 
 
 def familie_liste(con, ich_id, anzahl=50):
     """Die neuesten Läufe der ganzen Familie (REQ-003)."""
     zeilen = con.execute(_MIT_MITGLIED + " ORDER BY l.start DESC LIMIT ?", (anzahl,))
-    return [_fuer(z, ich_id, False) for z in zeilen]
+    return _mit_reaktionen(con, [_fuer(z, ich_id, False) for z in zeilen], ich_id)
 
 
 def detail(con, lauf_id, ich_id):
+    from kern import chat
     z = con.execute(_MIT_MITGLIED + " WHERE l.id = ?", (lauf_id,)).fetchone()
-    return _fuer(z, ich_id, True) if z else None
+    if not z:
+        return None
+    d = _mit_reaktionen(con, [_fuer(z, ich_id, True)], ich_id)[0]
+    d["kommentare"] = chat.kommentare(con, lauf_id, ich_id)
+    return d
 
 
 def _eigener(con, lauf_id, ich_id):

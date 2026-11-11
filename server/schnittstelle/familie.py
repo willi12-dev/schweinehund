@@ -106,7 +106,9 @@ def _geraet(d):
 @angemeldet_noetig
 def uebersicht():
     con = datenbank.db()
-    return jsonify(ok=True, ich=familie.fuer_app(g.ich), mitglieder=familie.uebersicht(con, g.ich))
+    from kern import chat
+    return jsonify(ok=True, ich=familie.fuer_app(g.ich), mitglieder=familie.uebersicht(con, g.ich),
+                   chat_ungelesen=chat.ungelesen(con, g.ich), push_arten=chat.push_stand(g.ich))
 
 
 @bp.post("/api/mitglieder")

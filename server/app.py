@@ -13,7 +13,7 @@ if HIER not in sys.path:
     sys.path.insert(0, HIER)
 
 from kern import datenbank, migrationen, version  # noqa: E402
-from schnittstelle import allgemein, familie, laeufe, punkte, push, show  # noqa: E402
+from schnittstelle import allgemein, chat, familie, laeufe, punkte, push, show  # noqa: E402
 
 
 def _env_laden(pfad):
@@ -46,6 +46,7 @@ def erstellen(datenbank_pfad=None, sicherung_ordner=None):
     app.register_blueprint(familie.bp)
     app.register_blueprint(punkte.bp)
     app.register_blueprint(show.bp)
+    app.register_blueprint(chat.bp)
     app.teardown_appcontext(datenbank.schliessen)
     return app
 

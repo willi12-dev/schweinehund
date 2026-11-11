@@ -3,7 +3,7 @@ import re
 
 from flask import Blueprint, g, jsonify, request
 
-from kern import bildtext, dateien, datenbank, laeufe, push
+from kern import bildtext, chat, dateien, datenbank, laeufe, push
 from schnittstelle.familie import angemeldet_noetig
 
 bp = Blueprint("laeufe", __name__, url_prefix="/api/laeufe")
@@ -50,10 +50,13 @@ def vorschau():
 def bestaetigen():
     daten = request.get_json(silent=True) or {}
     con = datenbank.db()
+    stand = chat.vorher(con, g.ich)
     ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten), daten.get("sichtbarkeit"))
     if ergebnis is None:
         return _fehler("Die Vorschau ist abgelaufen – bitte die Datei noch einmal teilen.", 410)
     lauf_id, neu = ergebnis
+    if neu:
+        chat.lauf_melden(con, g.ich, lauf_id, stand)   # REQ-006: Horst und Pushes – nur bei wirklich neuen Läufen
     datenbank.protokoll(con, "Lauf gespeichert" if neu else "Lauf ergänzt", f"Lauf {lauf_id}")
     con.commit()
     lauf = laeufe.detail(con, lauf_id, g.ich["id"])
@@ -75,7 +78,13 @@ def health_connect():
     if not isinstance(sitzungen, list):
         return _fehler("Keine Sitzungen übergeben.")
     con = datenbank.db()
-    neu, ergaenzt = laeufe.aus_health_connect(con, _wem(daten), [s for s in sitzungen if isinstance(s, dict)])
+    stand = chat.vorher(con, g.ich)
+    neue_ids = []
+    neu, ergaenzt = laeufe.aus_health_connect(con, _wem(daten), [s for s in sitzungen if isinstance(s, dict)], neue_ids)
+    if neue_ids:
+        # Beim Abgleich können viele Läufe auf einmal kommen – Horst meldet nur den jüngsten.
+        juengster = max(neue_ids, key=lambda i: con.execute("SELECT start FROM laeufe WHERE id = ?", (i,)).fetchone()[0])
+        chat.lauf_melden(con, g.ich, juengster, stand)
     if neu or ergaenzt:
         datenbank.protokoll(con, "Health Connect", f"{neu} neu, {ergaenzt} ergänzt")
     con.commit()
