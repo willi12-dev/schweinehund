@@ -1,0 +1,66 @@
+name: Prüfen und App bauen
+
+# Bei jedem Push: Server-Tests, App-Tests und die Android-App als Download (Testsignatur).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pruefen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten
+        run: pip install -r requirements.txt
+      - name: Regeltests
+        run: python tests/alle.py
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Firebase-Konfiguration ablegen (falls Secret vorhanden)
+        env:
+          FIREBASE_APP_KONFIG: ${{ secrets.FIREBASE_APP_KONFIG }}
+        run: |
+          if [ -n "$FIREBASE_APP_KONFIG" ]; then
+            printf '%s' "$FIREBASE_APP_KONFIG" > app/composeApp/google-services.json
+            echo "Firebase-Konfiguration abgelegt – Push ist in dieser App eingebaut."
+          else
+            echo "Kein Secret FIREBASE_APP_KONFIG – App wird ohne Push gebaut."
+          fi
+      - name: Server-Adresse bestimmen
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_HOST: ${{ secrets.PA_HOST }}
+        run: |
+          if [ -z "$PA_USERNAME" ]; then URL=""; 
+          elif [[ "$PA_HOST" == www* ]]; then URL="https://$PA_USERNAME.pythonanywhere.com";
+          else URL="https://$PA_USERNAME.eu.pythonanywhere.com"; fi
+          echo "SERVER_URL=$URL" >> "$GITHUB_ENV"
+          echo "VERSION=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "Server: ${URL:-(keiner – Secret PA_USERNAME fehlt)}"
+      - name: App-Tests und Bau
+        run: gradle -p app :composeApp:testDebugUnitTest :composeApp:assembleDebug -PserverUrl="$SERVER_URL" --stacktrace
+      - name: APK benennen
+        run: cp app/composeApp/build/outputs/apk/debug/composeApp-debug.apk "schweinehund-v$VERSION.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: schweinehund-app-v${{ env.VERSION }}
+          path: schweinehund-v*.apk
+          retention-days: 30

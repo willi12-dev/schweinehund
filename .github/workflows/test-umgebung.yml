@@ -1,0 +1,52 @@
+name: TEST-Umgebung
+
+# Jeder Push auf „entwicklung“ geht nach den Tests automatisch in die TEST-Umgebung auf PythonAnywhere.
+# Zurückrollen: „Run workflow“ mit einer Versionsnummer (Git-Tag, z. B. v0.1.0) – die Datenbank bleibt.
+on:
+  push:
+    branches: [entwicklung]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, die eingespielt werden soll (z. B. v0.1.0). Leer = neuester Stand."
+        required: false
+        default: ""
+
+concurrency:
+  group: test-umgebung
+  cancel-in-progress: false
+
+jobs:
+  einspielen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten
+        run: pip install -r requirements.txt
+      - name: Tests
+        run: python tests/alle.py
+      - name: Auf PythonAnywhere einspielen
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+          PA_HOST: ${{ secrets.PA_HOST }}
+          FIREBASE_KONTO: ${{ secrets.FIREBASE_KONTO }}
+          UMGEBUNG: TEST
+          BACKUP_DIR: backup
+        run: |
+          export GIT_SHA=$(git rev-parse HEAD)
+          python deploy/pa_deploy.py
+      - name: Sicherung der Datenbank aufbewahren (30 Tage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-datenbank-${{ github.run_number }}
+          path: backup/
+          retention-days: 30
+          if-no-files-found: ignore

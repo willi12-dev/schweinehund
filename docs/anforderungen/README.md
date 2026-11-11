@@ -2,7 +2,7 @@
 
 | ID | Titel | Status | Version |
 |---|---|---|---|
-| REQ-000 | Infrastruktur: Repo, Tests, App-Bau, Server, Push, Deployment | geplant | v0.1.0 |
+| REQ-000 | Infrastruktur: Repo, Tests, App-Bau, Server, Push, Deployment | in Entwicklung | v0.1.0 |
 | REQ-001 | Datentest: Läufe per Teilen übernehmen (GPX, TCX, Bild, Health Connect) | geplant | v0.2.0 |
 | REQ-002 | Grundgerüst: Anmeldung, Familienmitglieder, Navigation, Design „weiches Grau“ | geplant | v0.3.0 |
 | REQ-003 | Läufe und Karte: Lauf-Liste, Detailansicht, Privatzone, Sichtbarkeit pro Lauf | geplant | v0.4.0 |
