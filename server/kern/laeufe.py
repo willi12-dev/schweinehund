@@ -194,6 +194,7 @@ def fuer_app(lauf, quellen, mit_linie=True, lauf_id=None):
          "anstieg_m": None if lauf.get("anstieg_m") is None else round(lauf["anstieg_m"]),
          "puls_avg": lauf.get("puls_avg"), "kadenz": lauf.get("kadenz"), "schritte": lauf.get("schritte"),
          "quellen": quellen, "hat_strecke": len(punkte) >= 2,
+         "lk": f"{(lauf.get('distanz_m') or 0) / 1000 + (lauf.get('anstieg_m') or 0) / 100:.2f}".replace(".", ","),
          "km_zeiten": [dauer_text(s) for s in km.get("km", [])],
          "rest": f"{km['rest_m']} m in {dauer_text(km['rest_s'])}" if km.get("rest_m", 0) >= 50 else ""}
     if mit_linie:
