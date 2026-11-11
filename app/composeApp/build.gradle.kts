@@ -57,6 +57,16 @@ android {
         versionCode = appVersion.split(".").let { it[0].toInt() * 10000 + it[1].toInt() * 100 + it[2].toInt() }
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
     }
+    // Feste Testsignatur (nur für Test-Versionen, Passwort ist bewusst kein Geheimnis): so lässt sich jede neue
+    // Test-App über die alte installieren. Für eine echte Veröffentlichung kommt ein eigener Schlüssel als Secret.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("test-signatur.keystore")
+            storePassword = "android"
+            keyAlias = "test"
+            keyPassword = "android"
+        }
+    }
     buildFeatures {
         buildConfig = true
     }
