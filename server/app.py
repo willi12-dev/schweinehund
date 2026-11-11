@@ -13,7 +13,7 @@ if HIER not in sys.path:
     sys.path.insert(0, HIER)
 
 from kern import datenbank, migrationen, version  # noqa: E402
-from schnittstelle import allgemein, push  # noqa: E402
+from schnittstelle import allgemein, laeufe, push  # noqa: E402
 
 
 def _env_laden(pfad):
@@ -32,6 +32,7 @@ def erstellen(datenbank_pfad=None, sicherung_ordner=None):
     app = Flask(__name__)
     app.config["DATENBANK"] = datenbank_pfad or os.environ.get("DATENBANK") or os.path.join(HIER, "schweinehund.db")
     app.config["JSON_AS_ASCII"] = False
+    app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
     app.json.ensure_ascii = False
     ordner = sicherung_ordner or os.path.join(os.path.dirname(app.config["DATENBANK"]), "sicherungen")
     con = datenbank.verbinden(app.config["DATENBANK"])
@@ -41,6 +42,7 @@ def erstellen(datenbank_pfad=None, sicherung_ordner=None):
         con.close()
     app.register_blueprint(allgemein.bp)
     app.register_blueprint(push.bp)
+    app.register_blueprint(laeufe.bp)
     app.teardown_appcontext(datenbank.schliessen)
     return app
 

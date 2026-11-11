@@ -19,3 +19,33 @@ CREATE TABLE IF NOT EXISTS geraete (
     angelegt  TEXT NOT NULL,
     zuletzt   TEXT NOT NULL
 );
+
+-- REQ-001: Läufe (aus Datei, Bild oder Health Connect; gleiche Startzeit ± 2 Min. = derselbe Lauf)
+CREATE TABLE IF NOT EXISTS laeufe (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    geraet_id     TEXT NOT NULL,
+    laeufer       TEXT NOT NULL DEFAULT '',
+    start         TEXT NOT NULL,              -- UTC, ISO 8601
+    art           TEXT NOT NULL DEFAULT 'laufen',
+    distanz_m     REAL,
+    dauer_s       REAL,
+    anstieg_m     REAL,
+    puls_avg      INTEGER,
+    kadenz        INTEGER,
+    schritte      INTEGER,
+    kcal          INTEGER,
+    km_zeiten     TEXT NOT NULL DEFAULT '',   -- JSON {"km": [s, …], "rest_m": m, "rest_s": s}
+    punkte        TEXT NOT NULL DEFAULT '',   -- JSON [[lat, lon, hoehe, sekunde], …]
+    quellen       TEXT NOT NULL DEFAULT '',   -- z. B. "datei,bild"
+    zahlen_quelle TEXT NOT NULL DEFAULT '',   -- woher Distanz/Dauer/Anstieg stammen
+    angelegt      TEXT NOT NULL,
+    geaendert     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS laeufe_geraet_start ON laeufe (geraet_id, start);
+
+-- Erkannte, noch nicht bestätigte Läufe (Kontrollkarte in der App); werden nach einer Stunde verworfen.
+CREATE TABLE IF NOT EXISTS entwuerfe (
+    id       TEXT PRIMARY KEY,
+    daten    TEXT NOT NULL,
+    angelegt REAL NOT NULL
+);

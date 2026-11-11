@@ -36,6 +36,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
             implementation(project.dependencies.platform(libs.firebase.bom))
             implementation(libs.firebase.messaging)
+            implementation(libs.health.connect)
+            implementation(libs.mlkit.text)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

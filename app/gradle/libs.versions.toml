@@ -8,6 +8,8 @@ coroutines = "1.10.2"
 serialization = "1.8.1"
 activity-compose = "1.10.1"
 firebase-bom = "33.13.0"
+health-connect = "1.1.0"
+mlkit-text = "16.0.1"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -18,6 +20,8 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+health-connect = { module = "androidx.health.connect:connect-client", version.ref = "health-connect" }
+mlkit-text = { module = "com.google.mlkit:text-recognition", version.ref = "mlkit-text" }
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

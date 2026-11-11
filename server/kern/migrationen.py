@@ -20,8 +20,13 @@ def _schritt_1(con):
     """Grundstand v0.1.0 – Tabellen entstehen aus schema.sql (CREATE … IF NOT EXISTS)."""
 
 
+def _schritt_2(con):
+    """v0.2.0 (REQ-001): Tabellen laeufe und entwuerfe – entstehen aus schema.sql."""
+
+
 SCHRITTE = [
     (1, "Grundstand v0.1.0: Einstellungen, Protokoll, Geräte", _schritt_1),
+    (2, "v0.2.0: Läufe und Entwürfe (REQ-001)", _schritt_2),
 ]
 STAND = SCHRITTE[-1][0]
 
