@@ -25,6 +25,8 @@ jobs:
 
   app:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -64,3 +66,13 @@ jobs:
           name: schweinehund-app-v${{ env.VERSION }}
           path: schweinehund-v*.apk
           retention-days: 30
+      - name: Als Test-Version bereitstellen (feste Download-Adresse fürs Handy)
+        if: github.ref == 'refs/heads/entwicklung' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "schweinehund-v$VERSION.apk" schweinehund-test.apk
+          gh release view test >/dev/null 2>&1 || gh release create test --prerelease --target entwicklung \
+            --title "Test-Version (entwicklung)" --notes "Immer der neueste Stand von entwicklung. Nur zum Testen."
+          gh release upload test schweinehund-test.apk --clobber
+          gh release edit test --title "Test-Version v$VERSION (entwicklung)" --target "$GITHUB_SHA"
