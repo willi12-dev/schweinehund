@@ -64,7 +64,7 @@ def test_laeufe_aus_v020_bekommen_mitglied_spalte():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6, 7]
     spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
     assert "mitglied_id" in spalten and con.execute("SELECT COUNT(*) FROM laeufe").fetchone()[0] == 1
     assert con.execute("SELECT 1 FROM sqlite_master WHERE name = 'laeufe_mitglied_start'").fetchone()
@@ -86,6 +86,21 @@ def test_v030_bekommt_sichtbarkeit():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6, 7]
     assert con.execute("SELECT sichtbarkeit FROM laeufe").fetchone()[0] == "familie"
     assert "standard_sichtbarkeit" in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}
+
+
+def test_testdatensatz_legt_praxislaeufe_in_dieselbe_woche():
+    ordner = tempfile.mkdtemp()
+    pfad = os.path.join(ordner, "v6.db")
+    con = datenbank.verbinden(pfad)
+    migrationen.einrichten(con)
+    for start, sicht in (("2026-06-01T04:13:06+00:00", "ich"), ("2026-11-10T09:22:28+00:00", "ich"), ("2026-05-28T03:42:46+00:00", "ich")):
+        con.execute("INSERT INTO laeufe (geraet_id, start, sichtbarkeit, angelegt, geaendert) VALUES ('g', ?, ?, 'x', 'x')", (start, sicht))
+    con.execute("PRAGMA user_version = 6")
+    con.commit()
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "s"), "0.4.0") == [7]
+    zeilen = [tuple(z) for z in con.execute("SELECT start, sichtbarkeit FROM laeufe ORDER BY id")]
+    assert zeilen == [("2026-11-10T05:13:06+00:00", "familie"), ("2026-11-10T09:22:28+00:00", "familie"),
+                      ("2026-05-28T03:42:46+00:00", "ich")]

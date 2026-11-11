@@ -6,7 +6,8 @@
   Start/Ziel und Kilometer-Marken.
 - Sichtbarkeit pro Lauf: „Familie“ oder „nur ich“ (Familie sieht Zahlen ohne Karte, zählt trotzdem); Standard
   für neue Läufe unter „Ich“; eigene Läufe löschen.
-- Datenbank-Änderung 6: Sichtbarkeit an Läufen und Mitgliedern.
+- Karte mit Zoom-Knöpfen + / −; App nur noch für 64-Bit-Handys (38 statt 97 MB).
+- Datenbank-Änderung 6: Sichtbarkeit an Läufen und Mitgliedern; 7: Testdatensatz (Praxistest-Läufe am 10.11.).
 
 ## v0.3.0 (in Entwicklung)
 - REQ-002 Grundgerüst: Familie gründen (erster = Verwalter), Mitglieder per Einladungslink über WhatsApp

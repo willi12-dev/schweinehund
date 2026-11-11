@@ -11,7 +11,7 @@ Neue Änderung anlegen:
 """
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from kern.datenbank import SERVER_DIR, TZ, protokoll
 
@@ -54,6 +54,23 @@ def _schritt_6(con):
         con.execute("ALTER TABLE mitglieder ADD COLUMN standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'")
 
 
+
+# Testdatensatz der Familie (11.11.2026): Die beiden Praxistest-Läufe sollen in derselben Woche liegen, damit
+# Familienseite und Rangliste etwas zu zeigen haben. Erkennbar nur an ihren Startzeiten (keine Namen im Repo).
+TESTLAUF_VERSCHIEBEN = ("2026-06-01T04:11:00+00:00", "2026-06-01T04:16:00+00:00")   # Lauf 01.06. ~06:13 (Berlin)
+TESTLAUF_FAMILIE = ("2026-11-10T09:20:00+00:00", "2026-11-10T09:25:00+00:00")       # Lauf 10.11. ~10:22 (Berlin)
+VERSCHIEBUNG = timedelta(days=162, hours=1)   # 01.06. 06:13 Sommerzeit → 10.11. 06:13 Winterzeit
+
+
+def _schritt_7(con):
+    """v0.4.0: Testdatensatz – Praxistest-Lauf vom 01.06. auf den 10.11. legen, beide für die Familie sichtbar."""
+    for z in con.execute("SELECT id, start FROM laeufe WHERE start BETWEEN ? AND ?", TESTLAUF_VERSCHIEBEN).fetchall():
+        neu = (datetime.fromisoformat(z["start"]) + VERSCHIEBUNG).isoformat()
+        con.execute("UPDATE laeufe SET start = ?, sichtbarkeit = 'familie' WHERE id = ?", (neu, z["id"]))
+        protokoll(con, "Testdatensatz", f"Lauf {z['id']}: Start {z['start']} → {neu}")
+    con.execute("UPDATE laeufe SET sichtbarkeit = 'familie' WHERE start BETWEEN ? AND ?", TESTLAUF_FAMILIE)
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -65,6 +82,7 @@ SCHRITTE = [
     (4, "v0.2.0: unplausible Schrittzahlen entfernen", _schritt_4),
     (5, "v0.3.0: Familie und Mitglieder (REQ-002)", _schritt_5),
     (6, "v0.4.0: Sichtbarkeit pro Lauf (REQ-003)", _schritt_6),
+    (7, "v0.4.0: Testdatensatz – Praxistest-Läufe in dieselbe Woche", _schritt_7),
 ]
 STAND = SCHRITTE[-1][0]
 

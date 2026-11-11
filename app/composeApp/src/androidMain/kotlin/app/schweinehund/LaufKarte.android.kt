@@ -1,9 +1,28 @@
 package app.schweinehund
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -13,6 +32,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -57,10 +77,19 @@ actual fun LaufKarte(karte: KartenDaten, modifier: Modifier) {
         }
     }
 
-    AndroidView(factory = { ansicht }, modifier = modifier)
+    var karteBereit by remember { mutableStateOf<MapLibreMap?>(null) }
+    Box(modifier) {
+        AndroidView(factory = { ansicht }, modifier = Modifier.fillMaxSize())
+        // Zoom-Knöpfe (zusätzlich zu den zwei Fingern)
+        Column(Modifier.align(Alignment.TopEnd).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ZoomKnopf("+") { karteBereit?.animateCamera(CameraUpdateFactory.zoomIn()) }
+            ZoomKnopf("−") { karteBereit?.animateCamera(CameraUpdateFactory.zoomOut()) }
+        }
+    }
 
     DisposableEffect(karte) {
         ansicht.getMapAsync { map ->
+            karteBereit = map
             map.uiSettings.isRotateGesturesEnabled = false
             map.uiSettings.isTiltGesturesEnabled = false
             map.uiSettings.isCompassEnabled = false
@@ -75,6 +104,15 @@ actual fun LaufKarte(karte: KartenDaten, modifier: Modifier) {
         }
         onDispose { }
     }
+}
+
+@Composable
+private fun ZoomKnopf(zeichen: String, tippen: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).shadow(3.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))
+            .background(Farben.Weiss).clickable(onClick = tippen),
+        contentAlignment = Alignment.Center,
+    ) { Text(zeichen, color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
 }
 
 private fun zeichnen(stil: Style, karte: KartenDaten) {
