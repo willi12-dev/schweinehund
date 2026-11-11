@@ -8,5 +8,5 @@ Familienkarte, Chat und Horst, unser gemeinsamer innerer Schweinehund.
 - **Server:** Flask + SQLite auf PythonAnywhere
 - **Daten:** Läufe per „Teilen“ (GPX/TCX/FIT/Bild) und über Health Connect
 
-Stand: Planung. Anforderungen: [docs/anforderungen](docs/anforderungen/README.md) ·
+Stand: v0.1.0 – Fundament (Server, App-Gerüst, Push). Test-App: Releases → „Test-Version“. Anforderungen: [docs/anforderungen](docs/anforderungen/README.md) ·
 Zusammenarbeit: [docs/zusammenarbeit.md](docs/zusammenarbeit.md)

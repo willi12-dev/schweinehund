@@ -1,6 +1,6 @@
 # Änderungen
 
-## v0.1.0 (in Entwicklung)
+## v0.1.0 (11.11.2026)
 - REQ-000 Infrastruktur: Server-Gerüst (Flask + SQLite) mit `/version` und `/api/status`,
   nummerierte Datenbank-Migrationen mit Sicherung, Push-Probe über Firebase,
   App-Gerüst (Kotlin Multiplatform, Android) mit Startseite „Server erreichbar“,
