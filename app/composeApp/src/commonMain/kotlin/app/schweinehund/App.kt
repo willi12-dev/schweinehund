@@ -106,7 +106,8 @@ fun App(
     LaunchedEffect(geteilt) {
         if (geteilt.isEmpty()) return@LaunchedEffect
         val dateien = geteilt.toList()
-        geteiltErledigt()
+        // Eigene Coroutine: geteiltErledigt() ändert den Schlüssel dieses Effekts und würde ihn sonst abbrechen.
+        scope.launch {
         for (datei in dateien) {
             meldung = "Lese ${datei.name} …"
             val antwort = if (datei.istBild) {
@@ -116,6 +117,8 @@ fun App(
             warteschlange = warteschlange + Wartend(antwort.wert, antwort.fehler, datei.name)
         }
         meldung = ""
+        }
+        geteiltErledigt()
     }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Farben.Orange, background = Farben.Grund, onSurface = Farben.Tinte)) {

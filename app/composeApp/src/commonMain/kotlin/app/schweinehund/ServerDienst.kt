@@ -144,8 +144,12 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
 
     private suspend fun <T> sicher(block: suspend () -> Antwort<T>): Antwort<T> =
         try { block() } catch (e: Exception) {
+            if (e is kotlin.coroutines.cancellation.CancellationException) throw e
             // Ein zweiter Versuch hilft, wenn der Server (kostenloser Tarif) gerade erst aufwacht.
-            try { block() } catch (e2: Exception) { Antwort(null, verbindungsFehler(e2)) }
+            try { block() } catch (e2: Exception) {
+                if (e2 is kotlin.coroutines.cancellation.CancellationException) throw e2
+                Antwort(null, verbindungsFehler(e2))
+            }
         }
 
     private suspend fun HttpResponse.text() = bodyAsText() to status.value
