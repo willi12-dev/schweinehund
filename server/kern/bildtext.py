@@ -34,6 +34,18 @@ def _nach(text, etikett, muster, reichweite=60):
     return re.search(muster, text[m.end():m.end() + reichweite], re.I)
 
 
+def _schritte(t, kadenz, dauer_s):
+    """Schritte nur aus derselben Zeile („6.280 Schritte“) – Diagramm-Achsen (z. B. „83“) stehen sonst oft direkt
+    davor. Gibt es mehrere Kandidaten, gewinnt der, der zu Kadenz × Dauer passt."""
+    kandidaten = [int(_zahl(m.group(1))) for m in re.finditer(ZAHL + r"[ \t]*Schritte(?![ \t]*/)", t)]
+    if kadenz and dauer_s:
+        erwartet = kadenz * dauer_s / 60
+        passend = [k for k in kandidaten if abs(k - erwartet) <= 0.25 * erwartet]
+        return min(passend, key=lambda k: abs(k - erwartet)) if passend else None
+    kandidaten = [k for k in kandidaten if k >= 100]
+    return max(kandidaten) if kandidaten else None
+
+
 def lesen(text: str):
     """Ergebnis: dict mit den gefundenen Werten (fehlende = None). Mindestens Distanz oder Dauer muss da sein."""
     t = text.replace(" ", " ")
@@ -63,10 +75,8 @@ def lesen(text: str):
     m = re.search(r"(\d{2,3})\s*Schritte\s*/\s*Min", t, re.I)
     if m:
         werte["kadenz"] = int(m.group(1))
-    m = re.search(ZAHL + r"\s*Schritte(?!\s*/)", t)
-    if m:
-        werte["schritte"] = int(_zahl(m.group(1)))
-    m = re.search(ZAHL + r"\s*kcal", t, re.I)
+    werte["schritte"] = _schritte(t, werte["kadenz"], werte["dauer_s"])
+    m = re.search(ZAHL + r"[ \t]*kcal", t, re.I)
     if m:
         werte["kcal"] = int(_zahl(m.group(1)))
     m = _nach(t, r"H[öo]henunterschied|Anstieg", r"(\d{1,4}(?:[,.]\d)?)\s*m\b")

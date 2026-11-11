@@ -90,6 +90,15 @@ def test_bildtext_zweispaltig_und_einspaltig():
         assert w["start"].isoformat() == "2026-06-01T04:13:00+00:00"   # 06:13 Uhr Sommerzeit
 
 
+def test_bildtext_diagrammachse_wird_nicht_zu_schritten():
+    # Texterkennung hat die Kachel „6.280 Schritte“ zerrissen; davor steht die Achse des Puls-Diagramms.
+    text = _text("huawei_bild_spalten.txt").replace("6.280 Schritte", "6.28O") + "\n167\n144\n83\nSchritte\n"
+    w = bildtext.lesen(text)
+    assert w["schritte"] is None and w["kadenz"] == 148 and w["puls_avg"] == 144
+    w = bildtext.lesen(_text("huawei_bild_spalten.txt") + "\n83 Schritte\n")
+    assert w["schritte"] == 6280
+
+
 def test_bildtext_ohne_laufwerte():
     assert bildtext.lesen("Einkaufsliste: Milch, Brot") is None
 

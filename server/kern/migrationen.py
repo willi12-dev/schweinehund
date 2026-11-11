@@ -31,10 +31,17 @@ def _schritt_3(con):
                 "WHERE zahlen_quelle = 'datei' AND distanz_m IS NOT NULL AND distanz_m != ROUND(distanz_m)")
 
 
+
+def _schritt_4(con):
+    """v0.2.0: Unplausible Schrittzahlen aus der Texterkennung (Diagramm-Achse statt Kachel) entfernen."""
+    con.execute("UPDATE laeufe SET schritte = NULL WHERE schritte IS NOT NULL AND schritte < 100")
+
+
 SCHRITTE = [
     (1, "Grundstand v0.1.0: Einstellungen, Protokoll, Geräte", _schritt_1),
     (2, "v0.2.0: Läufe und Entwürfe (REQ-001)", _schritt_2),
     (3, "v0.2.0: Garmin-Zahlen als Schätzung markieren", _schritt_3),
+    (4, "v0.2.0: unplausible Schrittzahlen entfernen", _schritt_4),
 ]
 STAND = SCHRITTE[-1][0]
 
