@@ -38,6 +38,19 @@ def test_tcx_werte_wie_auf_der_uhr():
     assert l["start"].isoformat() == "2026-06-01T04:13:06+00:00"
 
 
+def test_garmin_gpx_ohne_summen_wird_nah_an_der_uhr_geschaetzt():
+    # Uhr: 6,11 km · 38:23 · 35 m Anstieg · Puls 155
+    l = dateien.lesen(_datei("garmin_lauf_c.gpx"))
+    assert l["geschaetzt"] is True and l["dauer_s"] == 2303
+    assert abs(l["distanz_m"] - 6110) < 30
+    assert abs(l["anstieg_m"] - 35) <= 3
+    assert abs(l["puls_avg"] - 155) <= 2
+
+
+def test_huawei_mit_summen_ist_keine_schaetzung():
+    assert dateien.lesen(_datei("huawei_lauf_a.gpx"))["geschaetzt"] is False
+
+
 def test_kilometerzeiten_hoechstens_zehn_sekunden_daneben():
     uhr = [489, 534, 561, 483]                                     # 8:09 · 8:54 · 9:21 · 8:03 (Huawei Health)
     km = dateien.lesen(_datei("huawei_lauf_b.tcx"))["km_zeiten"]
@@ -53,7 +66,7 @@ def test_linie_ist_normiert_und_kurz():
 
 
 def test_testdateien_verraten_keinen_wohnort():
-    for name in ("huawei_lauf_a.gpx", "huawei_lauf_b.tcx"):
+    for name in ("huawei_lauf_a.gpx", "huawei_lauf_b.tcx", "garmin_lauf_c.gpx"):
         p = dateien.lesen(_datei(name))["punkte"][0]
         assert not (49.9 < p[0] < 50.5 and 8.0 < p[1] < 8.8), name
 
@@ -143,6 +156,28 @@ def test_health_connect_neu_und_ergaenzt():
     # zweimal dieselben Sitzungen → nichts Neues
     r = c.post("/api/laeufe/health-connect", json={"geraet_id": GERAET, "sitzungen": sitzungen})
     assert r.get_json()["neu"] == 0
+
+
+def test_garmin_datei_dann_health_connect_zahlen_der_uhr_gewinnen():
+    _, c, _ = neuer_server()
+    _bestaetigen(c, _teilen(c, "garmin_lauf_c.gpx")["entwurf"])
+    hc = [{"start": "2026-11-10T09:22:28Z", "ende": "2026-11-10T10:00:51Z", "distanz_m": 6110, "anstieg_m": 35, "puls_avg": 155}]
+    assert c.post("/api/laeufe/health-connect", json={"geraet_id": GERAET, "sitzungen": hc}).get_json()["ergaenzt"] == 1
+    liste = c.get(f"/api/laeufe?geraet_id={GERAET}").get_json()["laeufe"]
+    assert len(liste) == 1
+    lauf = c.get(f"/api/laeufe/{liste[0]['id']}?geraet_id={GERAET}").get_json()["lauf"]
+    assert lauf["distanz_km"] == "6,11" and lauf["anstieg_m"] == 35 and lauf["hat_strecke"]
+    assert len(lauf["km_zeiten"]) == 6 and lauf["rest"].startswith(("108 m", "109 m", "110 m", "111 m", "112 m"))
+
+
+def test_health_connect_dann_garmin_datei_behaelt_zahlen_der_uhr():
+    _, c, _ = neuer_server()
+    hc = [{"start": "2026-11-10T09:22:40Z", "ende": "2026-11-10T10:00:51Z", "distanz_m": 6110, "anstieg_m": 35}]
+    c.post("/api/laeufe/health-connect", json={"geraet_id": GERAET, "sitzungen": hc})
+    _bestaetigen(c, _teilen(c, "garmin_lauf_c.gpx")["entwurf"])
+    liste = c.get(f"/api/laeufe?geraet_id={GERAET}").get_json()["laeufe"]
+    assert len(liste) == 1 and liste[0]["distanz_km"] == "6,11" and liste[0]["hat_strecke"]
+    assert liste[0]["start"] == "2026-11-10T09:22:28+00:00"          # Startzeit trotzdem aus der Datei
 
 
 def test_fehlerfaelle_der_schnittstelle():

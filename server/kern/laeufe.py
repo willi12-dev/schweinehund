@@ -5,7 +5,8 @@ Health Connect speichert direkt (`aus_health_connect`).
 
 Derselbe Lauf kann mehrfach kommen (Datei + Bild + Health Connect). Gleiche Startzeit (± 2 Min.) auf demselben
 Gerät = derselbe Lauf: Die Angaben werden zusammengeführt. Distanz/Dauer/Anstieg kommen aus der besten Quelle
-(Datei vor Health Connect vor Bild); Puls, Kadenz, Schritte und kcal ergänzt jede Quelle, die sie hat.
+(Datei vor Health Connect vor Bild – eine Datei ohne eigene Summen, z. B. von Garmin, zählt nur als Schätzung
+und weicht den Zahlen der Uhr aus Health Connect und vom Bild); Puls, Kadenz, Schritte und kcal ergänzt jede Quelle, die sie hat.
 """
 import json
 import time
@@ -16,7 +17,7 @@ from kern import dateien
 from kern.datenbank import TZ, jetzt_text
 
 FENSTER_S = 120
-RANG = {"bild": 1, "health-connect": 2, "datei": 3}
+RANG = {"datei-geschaetzt": 0, "bild": 1, "health-connect": 2, "datei": 3}
 WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 ZUSATZ = ("puls_avg", "kadenz", "schritte", "kcal")
 
@@ -77,6 +78,7 @@ def speichern(con, geraet_id, laeufer, lauf, quelle):
     start = lauf["start"].astimezone(timezone.utc).replace(microsecond=0)
     jetzt = jetzt_text()
     punkte = _nach_json(lauf)["punkte"] if lauf.get("punkte") else []
+    rang = "datei-geschaetzt" if quelle == "datei" and lauf.get("geschaetzt") else quelle
     alt = _passender(con, geraet_id, start)
     if alt is None:
         cur = con.execute(
@@ -86,20 +88,27 @@ def speichern(con, geraet_id, laeufer, lauf, quelle):
             (geraet_id, laeufer, start.isoformat(), lauf.get("art") or "laufen", lauf.get("distanz_m"),
              lauf.get("dauer_s"), lauf.get("anstieg_m"), *(lauf.get(k) for k in ZUSATZ),
              json.dumps(lauf["km_zeiten"]) if lauf.get("km_zeiten") else "", json.dumps(punkte) if punkte else "",
-             quelle, quelle, jetzt, jetzt))
+             quelle, rang, jetzt, jetzt))
         return cur.lastrowid, True
 
     felder = {"laeufer": laeufer or alt["laeufer"], "geaendert": jetzt,
               "quellen": ",".join(sorted(set(filter(None, alt["quellen"].split(","))) | {quelle}))}
-    if RANG[quelle] >= RANG.get(alt["zahlen_quelle"], 0):
+    zahlen_neu = RANG[rang] >= RANG.get(alt["zahlen_quelle"], 0)
+    if zahlen_neu:
         felder.update(distanz_m=lauf.get("distanz_m") or alt["distanz_m"], dauer_s=lauf.get("dauer_s") or alt["dauer_s"],
                       anstieg_m=lauf.get("anstieg_m") if lauf.get("anstieg_m") is not None else alt["anstieg_m"],
-                      zahlen_quelle=quelle)
-        if quelle == "datei":
-            felder["start"] = start.isoformat()
+                      zahlen_quelle=rang)
+    if quelle == "datei":
+        felder["start"] = start.isoformat()   # die Datei hat die sekundengenaue Startzeit
     if punkte:
         felder["punkte"] = json.dumps(punkte)
-        felder["km_zeiten"] = json.dumps(lauf["km_zeiten"])
+    # Kilometerzeiten immer auf die gültige Distanz umrechnen (Strecke aus der Datei, Distanz ggf. von der Uhr).
+    gueltige_punkte = punkte or (json.loads(alt["punkte"]) if alt["punkte"] else [])
+    if gueltige_punkte:
+        distanz = felder.get("distanz_m", alt["distanz_m"])
+        t0 = datetime.fromisoformat(felder.get("start", alt["start"]))
+        tupel = [(p[0], p[1], p[2], t0 + timedelta(seconds=p[3]) if p[3] is not None else None) for p in gueltige_punkte]
+        felder["km_zeiten"] = json.dumps(dateien.km_zeiten(tupel, distanz))
     for k in ZUSATZ:
         if lauf.get(k) is not None:
             felder[k] = lauf[k]

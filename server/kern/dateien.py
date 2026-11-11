@@ -87,17 +87,21 @@ def _gpx(wurzel):
     trk = next((k for k in wurzel.iter() if _name(k.tag) == "trk"), None)
     if trk is None:
         raise DateiFehler("Die GPX-Datei enthält keine aufgezeichnete Strecke (trk).")
-    punkte = []
+    punkte, puls = [], []
     for p in trk.iter():
         if _name(p.tag) != "trkpt":
             continue
         ele, t = _zahl(p, "ele"), _erstes(p, "time")
+        hf = _zahl(p, "hr")
+        if hf:
+            puls.append(hf)
         punkte.append((float(p.get("lat")), float(p.get("lon")), ele, _zeit(t.text if t is not None else "")))
     ext = next((k for k in trk if _name(k.tag) == "extensions"), None)
     art = _erstes(trk, "type")
     return {"format": "gpx", "art": (art.text or "").strip() if art is not None else "",
             "punkte": punkte, "distanz_m": _zahl(ext, "totalDistance"), "dauer_s": _zahl(ext, "totalTime"),
-            "anstieg_m": _zahl(ext, "cumulativeClimb"), "puls_avg": None}
+            "anstieg_m": _zahl(ext, "cumulativeClimb"),
+            "puls_avg": round(sum(puls) / len(puls)) if puls else None}
 
 
 def _tcx(wurzel):
@@ -138,8 +142,11 @@ def _vervollstaendigen(lauf):
     gemessen = sum(abstand_m(punkte[i - 1], punkte[i]) for i in range(1, len(punkte)))
     zeiten = [p[3] for p in punkte if p[3]]
     start = zeiten[0] if zeiten else None
+    # Ohne Summen in der Datei (z. B. Garmin) rechnen wir selbst – das ist eine Schätzung; Health Connect
+    # (die Zahlen der Uhr) darf sie später überschreiben.
+    lauf["geschaetzt"] = not lauf["distanz_m"] or lauf["anstieg_m"] is None
     if not lauf["distanz_m"]:
-        lauf["distanz_m"] = gemessen
+        lauf["distanz_m"] = distanz_geglaettet(punkte)
     if not lauf["dauer_s"] and len(zeiten) >= 2:
         lauf["dauer_s"] = (zeiten[-1] - zeiten[0]).total_seconds()
     if lauf["anstieg_m"] is None:
@@ -156,10 +163,26 @@ def _laufart(text):
     return "laufen" if not t or re.search(r"lauf|run", t) else t
 
 
-def anstieg_geglaettet(hoehen, schwelle=3.0):
-    """Ersatz, wenn die Datei keine Summe hat: zählt nur Anstiege über der Schwelle (gegen Messrauschen)."""
+def distanz_geglaettet(punkte, fenster=3):
+    """Ersatz, wenn die Datei keine Distanz hat: GPS-Zittern über ein gleitendes Mittel glätten.
+    Abgeglichen mit Garmin (6,11 km laut Uhr → 6,11 km statt roh 6,18 km)."""
+    if len(punkte) < 2:
+        return 0.0
+    halb, glatt = fenster // 2, []
+    for i in range(len(punkte)):
+        teil = punkte[max(0, i - halb):i + halb + 1]
+        glatt.append((sum(p[0] for p in teil) / len(teil), sum(p[1] for p in teil) / len(teil)))
+    return sum(abstand_m(glatt[i - 1], glatt[i]) for i in range(1, len(glatt)))
+
+
+def anstieg_geglaettet(hoehen, schwelle=1.0, fenster=5):
+    """Ersatz, wenn die Datei keine Summe hat: Höhen gleitend mitteln, dann nur Anstiege über der Schwelle zählen.
+    Abgeglichen mit Garmin (35 m → 34 m) und Huawei (95,3 → 92,6 m; 72,0 → 70,3 m)."""
     if not hoehen:
         return 0.0
+    halb = fenster // 2
+    hoehen = [sum(hoehen[max(0, i - halb):i + halb + 1]) / len(hoehen[max(0, i - halb):i + halb + 1])
+              for i in range(len(hoehen))]
     summe, basis = 0.0, hoehen[0]
     for h in hoehen[1:]:
         if h - basis >= schwelle:

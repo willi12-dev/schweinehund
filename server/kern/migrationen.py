@@ -24,9 +24,17 @@ def _schritt_2(con):
     """v0.2.0 (REQ-001): Tabellen laeufe und entwuerfe – entstehen aus schema.sql."""
 
 
+def _schritt_3(con):
+    """v0.2.0: Garmin-Dateien ohne eigene Summen gelten als Schätzung, damit Health Connect sie korrigieren darf.
+    Erkennbar an einer selbst gerechneten (nicht ganzzahligen) Distanz – Uhren liefern ganze Meter."""
+    con.execute("UPDATE laeufe SET zahlen_quelle = 'datei-geschaetzt' "
+                "WHERE zahlen_quelle = 'datei' AND distanz_m IS NOT NULL AND distanz_m != ROUND(distanz_m)")
+
+
 SCHRITTE = [
     (1, "Grundstand v0.1.0: Einstellungen, Protokoll, Geräte", _schritt_1),
     (2, "v0.2.0: Läufe und Entwürfe (REQ-001)", _schritt_2),
+    (3, "v0.2.0: Garmin-Zahlen als Schätzung markieren", _schritt_3),
 ]
 STAND = SCHRITTE[-1][0]
 
