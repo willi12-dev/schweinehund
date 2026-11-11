@@ -1,6 +1,6 @@
 # Änderungen
 
-## v0.6.0 (in Entwicklung)
+## v0.6.0 (11.11.2026)
 - REQ-005 Sonntagsshow: Sonntag 19 Uhr wird die Woche eingefroren und Karte für Karte enthüllt – Horsts Bilanz,
   Sonderpreise (Bergziege, Frühaufsteher, Dauerläufer, Tempomacher, Comeback), Platz 3, Platz 2,
   Member of the Week, Einsatz der Woche (Familienwette) und am Monatsende Member of the Month.
@@ -9,12 +9,12 @@
 - Ruhmeshalle mit allen Shows; der Verwalter legt den Einsatz fest und kann die Show zum Testen vorziehen.
 - Datenbank-Änderung 9: Shows und Push-Schlüssel am Mitglied.
 
-## v0.5.0 (in Entwicklung)
+## v0.5.0 (11.11.2026)
 - REQ-004 Punkte und Rangliste: Leistungskilometer (km + Höhenmeter ÷ 100), Rangliste Woche/Monat,
   Horst-o-Meter mit Familienziel (Start 40 LK, Verwalter ändert), eigener Fortschritt (8 Wochen),
   Serie „Wochen in Folge“, Bestwerte; LK an jedem Lauf. Es zählen Läufe ab 1 km.
 
-## v0.4.0 (in Entwicklung)
+## v0.4.0 (11.11.2026)
 - REQ-003 Läufe und Karte: Läufe der ganzen Familie (Reiter „Familie“ / „Meine“, Tipp auf ein Mitglied zeigt
   dessen Läufe), Detailansicht mit echter Karte (MapLibre + OpenFreeMap), Strecke nach Tempo eingefärbt,
   Start/Ziel und Kilometer-Marken.
@@ -23,7 +23,7 @@
 - Karte mit Zoom-Knöpfen + / −; App nur noch für 64-Bit-Handys (38 statt 97 MB).
 - Datenbank-Änderung 6: Sichtbarkeit an Läufen und Mitgliedern; 7: Testdatensatz (Praxistest-Läufe am 10.11.).
 
-## v0.3.0 (in Entwicklung)
+## v0.3.0 (11.11.2026)
 - REQ-002 Grundgerüst: Familie gründen (erster = Verwalter), Mitglieder per Einladungslink über WhatsApp
   (einmal gültig, 7 Tage, auch als Code eintippbar), Anmeldung ohne Passwort per Handy-Schlüssel.
 - Neuer Link für ein Mitglied meldet dessen altes Handy ab; Läufe aus dem Datentest gehen beim Beitreten über.
