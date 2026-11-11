@@ -1,0 +1,24 @@
+name: Version markieren
+
+# Nach „Einspielen“ (Push auf main): Git-Tag vX.Y.Z aus der Datei VERSION setzen – damit lässt sich später
+# jede Version gezielt wieder einspielen („Zurückrollen“).
+on:
+  push:
+    branches: [main]
+
+jobs:
+  markieren:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag setzen (falls noch nicht vorhanden)
+        run: |
+          V="v$(cat VERSION)"
+          git fetch --tags -q
+          if git rev-parse -q --verify "refs/tags/$V" >/dev/null; then
+            echo "$V existiert schon – nichts zu tun."
+          else
+            git tag "$V" "$GITHUB_SHA" && git push origin "$V" && echo "$V gesetzt."
+          fi
