@@ -12,7 +12,7 @@
 | REQ-007 | Familienkarte: Felder erobern über alle Städte hinweg | geplant | v0.8.0 |
 | REQ-008 | Treffen-Bonus: gemeinsame Läufe zählen doppelt | geplant | v0.9.0 |
 | REQ-009 | Fernduell live | geplant | v0.10.0 |
-| REQ-010 | Decker-Werkstatt: Wünsche, Abstimmung, Sprüche und Preise als Daten | geplant | v0.11.0 |
+| REQ-010 | Familien-Werkstatt: Wünsche, Abstimmung, Sprüche und Preise als Daten | geplant | v0.11.0 |
 | REQ-011 | Automatik-Weg: Health Sync (optional, falls Teilen im Alltag nervt) | geplant | – |
 | REQ-012 | iPhone-Version mit Apple Health | geplant | – |
 
