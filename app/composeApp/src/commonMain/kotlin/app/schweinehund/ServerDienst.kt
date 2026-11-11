@@ -1,6 +1,7 @@
 package app.schweinehund
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
@@ -121,10 +122,31 @@ private fun <T> auswerten(json: String, code: Int, lesen: (JsonObject) -> T): An
 fun vorschauLesen(json: String, code: Int): Antwort<Vorschau> =
     auswerten(json, code) { Vorschau(it["entwurf"].text()!!, laufLesen(it["lauf"]!!.jsonObject)) }
 
-class ServerDienst(private val basis: String, private val client: HttpClient = HttpClient()) {
+/** Klare Fehlermeldung statt „nicht erreichbar“ – hilft beim Datentest, die Ursache zu finden. */
+fun verbindungsFehler(e: Throwable): String {
+    val art = e::class.simpleName ?: "Fehler"
+    return when {
+        art.contains("Timeout", ignoreCase = true) -> "Der Server antwortet zu langsam ($art). Bitte gleich noch einmal teilen."
+        art.contains("UnknownHost", ignoreCase = true) -> "Kein Internet oder Server-Adresse unbekannt ($art)."
+        else -> "Verbindung fehlgeschlagen: $art – ${e.message?.take(160) ?: "ohne Text"}"
+    }
+}
+
+fun standardClient(): HttpClient = HttpClient {
+    install(HttpTimeout) {
+        connectTimeoutMillis = 20_000
+        socketTimeoutMillis = 90_000
+        requestTimeoutMillis = 120_000
+    }
+}
+
+class ServerDienst(private val basis: String, private val client: HttpClient = standardClient()) {
 
     private suspend fun <T> sicher(block: suspend () -> Antwort<T>): Antwort<T> =
-        try { block() } catch (e: Exception) { Antwort(null, "Server nicht erreichbar.") }
+        try { block() } catch (e: Exception) {
+            // Ein zweiter Versuch hilft, wenn der Server (kostenloser Tarif) gerade erst aufwacht.
+            try { block() } catch (e2: Exception) { Antwort(null, verbindungsFehler(e2)) }
+        }
 
     private suspend fun HttpResponse.text() = bodyAsText() to status.value
 
