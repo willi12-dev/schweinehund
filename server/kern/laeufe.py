@@ -18,6 +18,7 @@ from kern.datenbank import TZ, jetzt_text
 
 FENSTER_S = 120
 RANG = {"datei-geschaetzt": 0, "bild": 1, "health-connect": 2, "datei": 3}
+SICHTBARKEITEN = ("familie", "ich")   # „ich“ = nur für mich: Familie sieht Zahlen, aber keine Strecke (REQ-003)
 WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 ZUSATZ = ("puls_avg", "kadenz", "schritte", "kcal")
 
@@ -57,14 +58,17 @@ def entwurf_holen(con, eid):
 
 def besitzer(mitglied, geraet_id=""):
     """Wem ein Lauf gehört: das angemeldete Mitglied (und von welchem Handy er kam)."""
-    return {"mitglied_id": mitglied["id"], "name": mitglied["name"], "geraet_id": geraet_id or mitglied.get("geraet_id") or ""}
+    return {"mitglied_id": mitglied["id"], "name": mitglied["name"], "geraet_id": geraet_id or mitglied.get("geraet_id") or "",
+            "sichtbarkeit": mitglied.get("standard_sichtbarkeit") or "familie"}
 
 
-def bestaetigen(con, eid, wem):
+def bestaetigen(con, eid, wem, sichtbarkeit=None):
     lauf = entwurf_holen(con, eid)
     if lauf is None:
         return None
     con.execute("DELETE FROM entwuerfe WHERE id = ?", (eid,))
+    if sichtbarkeit in SICHTBARKEITEN:
+        lauf["sichtbarkeit"] = sichtbarkeit
     return speichern(con, wem, lauf, lauf["quelle"])
 
 
@@ -87,16 +91,17 @@ def speichern(con, wem, lauf, quelle):
     alt = _passender(con, wem["mitglied_id"], start)
     if alt is None:
         cur = con.execute(
-            "INSERT INTO laeufe (mitglied_id, geraet_id, laeufer, start, art, distanz_m, dauer_s, anstieg_m, puls_avg, kadenz, "
-            "schritte, kcal, km_zeiten, punkte, quellen, zahlen_quelle, angelegt, geaendert) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (wem["mitglied_id"], wem["geraet_id"], wem["name"], start.isoformat(), lauf.get("art") or "laufen", lauf.get("distanz_m"),
+            "INSERT INTO laeufe (sichtbarkeit, mitglied_id, geraet_id, laeufer, start, art, distanz_m, dauer_s, anstieg_m, "
+            "puls_avg, kadenz, schritte, kcal, km_zeiten, punkte, quellen, zahlen_quelle, angelegt, geaendert) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lauf.get("sichtbarkeit") or wem.get("sichtbarkeit") or "familie", wem["mitglied_id"], wem["geraet_id"], wem["name"], start.isoformat(), lauf.get("art") or "laufen", lauf.get("distanz_m"),
              lauf.get("dauer_s"), lauf.get("anstieg_m"), *(lauf.get(k) for k in ZUSATZ),
              json.dumps(lauf["km_zeiten"]) if lauf.get("km_zeiten") else "", json.dumps(punkte) if punkte else "",
              quelle, rang, jetzt, jetzt))
         return cur.lastrowid, True
 
     felder = {"laeufer": wem["name"], "geaendert": jetzt,
+              **({"sichtbarkeit": lauf["sichtbarkeit"]} if lauf.get("sichtbarkeit") in SICHTBARKEITEN else {}),
               "quellen": ",".join(sorted(set(filter(None, alt["quellen"].split(","))) | {quelle}))}
     zahlen_neu = RANG[rang] >= RANG.get(alt["zahlen_quelle"], 0)
     if zahlen_neu:
@@ -196,12 +201,62 @@ def fuer_app(lauf, quellen, mit_linie=True, lauf_id=None):
     return d
 
 
-def liste(con, mitglied_id, anzahl=50):
-    """Die neuesten Läufe dieses Mitglieds (auch ältere Läufe, die nachträglich geteilt werden)."""
-    zeilen = con.execute("SELECT * FROM laeufe WHERE mitglied_id = ? ORDER BY start DESC LIMIT ?", (mitglied_id, anzahl))
-    return [fuer_app(dict(z), z["quellen"].split(","), mit_linie=False, lauf_id=z["id"]) for z in zeilen]
+_MIT_MITGLIED = ("SELECT l.*, m.name AS m_name, m.farbe AS m_farbe, m.kuerzel AS m_kuerzel "
+                 "FROM laeufe l JOIN mitglieder m ON m.id = l.mitglied_id")
 
 
-def detail(con, lauf_id, mitglied_id):
-    z = con.execute("SELECT * FROM laeufe WHERE id = ? AND mitglied_id = ?", (lauf_id, mitglied_id)).fetchone()
-    return fuer_app(dict(z), z["quellen"].split(","), lauf_id=z["id"]) if z else None
+def _fuer(z, ich_id, detail):
+    """Ein Lauf aus Sicht eines Familienmitglieds: fremde Läufe mit „nur für mich“ ohne Strecke."""
+    z = dict(z)
+    eigen = z["mitglied_id"] == ich_id
+    sicht = z.get("sichtbarkeit") or "familie"
+    darf = eigen or sicht == "familie"
+    d = fuer_app(z, z["quellen"].split(","), mit_linie=detail and darf, lauf_id=z["id"])
+    hat = d["hat_strecke"]
+    d.update(eigen=eigen, sichtbarkeit=sicht, hat_strecke=hat and darf, strecke_privat=hat and not darf,
+             mitglied={"id": z["mitglied_id"], "name": z["m_name"], "farbe": z["m_farbe"], "kuerzel": z["m_kuerzel"]})
+    if detail and darf and hat:
+        punkte = [tuple(p) for p in json.loads(z["punkte"])]
+        d["karte"] = dateien.karte(punkte, z.get("distanz_m"))
+    return d
+
+
+def liste(con, mitglied_id, ich_id=None, anzahl=50):
+    """Die neuesten Läufe eines Mitglieds (auch ältere Läufe, die nachträglich geteilt werden)."""
+    zeilen = con.execute(_MIT_MITGLIED + " WHERE l.mitglied_id = ? ORDER BY l.start DESC LIMIT ?", (mitglied_id, anzahl))
+    return [_fuer(z, mitglied_id if ich_id is None else ich_id, False) for z in zeilen]
+
+
+def familie_liste(con, ich_id, anzahl=50):
+    """Die neuesten Läufe der ganzen Familie (REQ-003)."""
+    zeilen = con.execute(_MIT_MITGLIED + " ORDER BY l.start DESC LIMIT ?", (anzahl,))
+    return [_fuer(z, ich_id, False) for z in zeilen]
+
+
+def detail(con, lauf_id, ich_id):
+    z = con.execute(_MIT_MITGLIED + " WHERE l.id = ?", (lauf_id,)).fetchone()
+    return _fuer(z, ich_id, True) if z else None
+
+
+def _eigener(con, lauf_id, ich_id):
+    z = con.execute("SELECT id, mitglied_id FROM laeufe WHERE id = ?", (lauf_id,)).fetchone()
+    if z is None:
+        return "fehlt"
+    return "ok" if z["mitglied_id"] == ich_id else "fremd"
+
+
+def sichtbarkeit_setzen(con, lauf_id, ich_id, wert):
+    """Ergebnis: "ok", "fehlt", "fremd" oder "ungueltig"."""
+    if wert not in SICHTBARKEITEN:
+        return "ungueltig"
+    stand = _eigener(con, lauf_id, ich_id)
+    if stand == "ok":
+        con.execute("UPDATE laeufe SET sichtbarkeit = ?, geaendert = ? WHERE id = ?", (wert, jetzt_text(), lauf_id))
+    return stand
+
+
+def loeschen(con, lauf_id, ich_id):
+    stand = _eigener(con, lauf_id, ich_id)
+    if stand == "ok":
+        con.execute("DELETE FROM laeufe WHERE id = ?", (lauf_id,))
+    return stand

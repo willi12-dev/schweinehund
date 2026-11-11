@@ -139,7 +139,12 @@ def neue_einladung(mitglied_id):
 @_familienfehler
 def ich_aendern():
     con = datenbank.db()
-    ich = familie.farbe_aendern(con, g.ich, _daten().get("farbe"))
+    d = _daten()
+    ich = g.ich
+    if "farbe" in d:
+        ich = familie.farbe_aendern(con, ich, d.get("farbe"))
+    if "standard_sichtbarkeit" in d:
+        ich = familie.standard_aendern(con, ich, d.get("standard_sichtbarkeit"))
     con.commit()
     return jsonify(ok=True, ich=familie.fuer_app(ich))
 

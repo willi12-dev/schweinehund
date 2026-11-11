@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS laeufe (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     geraet_id     TEXT NOT NULL,
     mitglied_id   INTEGER,                    -- REQ-002: wem der Lauf gehört (NULL = Handy noch nicht angemeldet)
+    sichtbarkeit  TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: 'familie' oder 'ich' (Strecke nur für den Läufer)
     laeufer       TEXT NOT NULL DEFAULT '',
     start         TEXT NOT NULL,              -- UTC, ISO 8601
     art           TEXT NOT NULL DEFAULT 'laufen',
@@ -61,7 +62,8 @@ CREATE TABLE IF NOT EXISTS mitglieder (
     schluessel  TEXT UNIQUE,                         -- Prüfsumme des Handy-Schlüssels; NULL = nicht angemeldet
     geraet_id   TEXT NOT NULL DEFAULT '',
     angelegt    TEXT NOT NULL,
-    beigetreten TEXT
+    beigetreten TEXT,
+    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'   -- REQ-003: Sichtbarkeit neuer Läufe
 );
 
 CREATE TABLE IF NOT EXISTS einladungen (

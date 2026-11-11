@@ -113,9 +113,9 @@ def test_laeufe_aus_dem_datentest_gehen_aufs_mitglied_ueber():
     vb = _als(c, b["schluessel"])
     eigene = vb.get("/api/laeufe").get_json()["laeufe"]
     assert len(eigene) == 1
-    # fremde Läufe sind nicht abrufbar
+    # Läufe der anderen sind sichtbar (REQ-003), aber nicht als eigene
     fremd_id = va.get("/api/laeufe").get_json()["laeufe"][0]["id"]
-    assert vb.get(f"/api/laeufe/{fremd_id}").status_code == 404
+    assert vb.get(f"/api/laeufe/{fremd_id}").get_json()["lauf"]["eigen"] is False
 
 
 def test_familienuebersicht_mit_wochenkilometern():

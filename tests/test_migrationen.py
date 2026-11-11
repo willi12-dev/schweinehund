@@ -64,7 +64,28 @@ def test_laeufe_aus_v020_bekommen_mitglied_spalte():
     con.commit()
     con.close()
     con = datenbank.verbinden(pfad)
-    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5]
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.2.0") == [5, 6]
     spalten = {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}
     assert "mitglied_id" in spalten and con.execute("SELECT COUNT(*) FROM laeufe").fetchone()[0] == 1
     assert con.execute("SELECT 1 FROM sqlite_master WHERE name = 'laeufe_mitglied_start'").fetchone()
+
+
+def test_v030_bekommt_sichtbarkeit():
+    """Datenbank von v0.3.0 → Schritt 6 ergänzt Sichtbarkeit an Läufen und Standard an Mitgliedern."""
+    ordner = tempfile.mkdtemp()
+    pfad = os.path.join(ordner, "v030.db")
+    con = sqlite3.connect(pfad)
+    alt = migrationen.schema_text()
+    alt = alt.replace("    sichtbarkeit  TEXT NOT NULL DEFAULT 'familie',  -- REQ-003: 'familie' oder 'ich' (Strecke nur für den Läufer)\n", "")
+    alt = alt.replace("    beigetreten TEXT,\n    standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'   -- REQ-003: Sichtbarkeit neuer Läufe\n",
+                      "    beigetreten TEXT\n")
+    assert "sichtbarkeit" not in alt
+    con.executescript(alt)
+    con.execute("INSERT INTO laeufe (geraet_id, start, angelegt, geaendert) VALUES ('g-alt-0001', '2026-06-01T04:13:06+00:00', 'x', 'x')")
+    con.execute("PRAGMA user_version = 5")
+    con.commit()
+    con.close()
+    con = datenbank.verbinden(pfad)
+    assert migrationen.einrichten(con, pfad, os.path.join(ordner, "sich"), "0.3.0") == [6]
+    assert con.execute("SELECT sichtbarkeit FROM laeufe").fetchone()[0] == "familie"
+    assert "standard_sichtbarkeit" in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}

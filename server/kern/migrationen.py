@@ -45,6 +45,15 @@ def _schritt_5(con):
         con.execute("ALTER TABLE laeufe ADD COLUMN mitglied_id INTEGER")
 
 
+
+def _schritt_6(con):
+    """v0.4.0 (REQ-003): Sichtbarkeit pro Lauf und Standard pro Mitglied."""
+    if "sichtbarkeit" not in {z[1] for z in con.execute("PRAGMA table_info(laeufe)")}:
+        con.execute("ALTER TABLE laeufe ADD COLUMN sichtbarkeit TEXT NOT NULL DEFAULT 'familie'")
+    if "standard_sichtbarkeit" not in {z[1] for z in con.execute("PRAGMA table_info(mitglieder)")}:
+        con.execute("ALTER TABLE mitglieder ADD COLUMN standard_sichtbarkeit TEXT NOT NULL DEFAULT 'familie'")
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -55,6 +64,7 @@ SCHRITTE = [
     (3, "v0.2.0: Garmin-Zahlen als Schätzung markieren", _schritt_3),
     (4, "v0.2.0: unplausible Schrittzahlen entfernen", _schritt_4),
     (5, "v0.3.0: Familie und Mitglieder (REQ-002)", _schritt_5),
+    (6, "v0.4.0: Sichtbarkeit pro Lauf (REQ-003)", _schritt_6),
 ]
 STAND = SCHRITTE[-1][0]
 

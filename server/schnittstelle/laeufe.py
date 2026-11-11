@@ -50,7 +50,7 @@ def vorschau():
 def bestaetigen():
     daten = request.get_json(silent=True) or {}
     con = datenbank.db()
-    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten))
+    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten), daten.get("sichtbarkeit"))
     if ergebnis is None:
         return _fehler("Die Vorschau ist abgelaufen – bitte die Datei noch einmal teilen.", 410)
     lauf_id, neu = ergebnis
@@ -85,7 +85,42 @@ def health_connect():
 @bp.get("")
 @angemeldet_noetig
 def liste():
-    return jsonify(ok=True, laeufe=laeufe.liste(datenbank.db(), g.ich["id"]))
+    """Eigene Läufe – oder mit ?mitglied=<id> die Läufe eines anderen Familienmitglieds."""
+    wer = request.args.get("mitglied", type=int) or g.ich["id"]
+    return jsonify(ok=True, laeufe=laeufe.liste(datenbank.db(), wer, g.ich["id"]))
+
+
+@bp.get("/familie")
+@angemeldet_noetig
+def familie_liste():
+    return jsonify(ok=True, laeufe=laeufe.familie_liste(datenbank.db(), g.ich["id"]))
+
+
+_STAND = {"fehlt": ("Lauf nicht gefunden.", 404), "fremd": ("Das ist nicht dein Lauf.", 403),
+          "ungueltig": ("Unbekannte Sichtbarkeit.", 400)}
+
+
+@bp.post("/<int:lauf_id>/sichtbarkeit")
+@angemeldet_noetig
+def sichtbarkeit(lauf_id):
+    con = datenbank.db()
+    stand = laeufe.sichtbarkeit_setzen(con, lauf_id, g.ich["id"], (request.get_json(silent=True) or {}).get("sichtbarkeit"))
+    if stand != "ok":
+        return _fehler(*_STAND[stand])
+    con.commit()
+    return jsonify(ok=True, lauf=laeufe.detail(con, lauf_id, g.ich["id"]))
+
+
+@bp.delete("/<int:lauf_id>")
+@angemeldet_noetig
+def loeschen(lauf_id):
+    con = datenbank.db()
+    stand = laeufe.loeschen(con, lauf_id, g.ich["id"])
+    if stand != "ok":
+        return _fehler(*_STAND[stand])
+    datenbank.protokoll(con, "Lauf gelöscht", f"Lauf {lauf_id}")
+    con.commit()
+    return jsonify(ok=True)
 
 
 @bp.get("/<int:lauf_id>")

@@ -181,5 +181,13 @@ def uebersicht(con, ich, jetzt=None):
     return liste
 
 
+def standard_aendern(con, ich, wert):
+    if wert not in ("familie", "ich"):
+        raise FamilienFehler("Unbekannte Sichtbarkeit.")
+    con.execute("UPDATE mitglieder SET standard_sichtbarkeit = ? WHERE id = ?", (wert, ich["id"]))
+    return mitglied(con, ich["id"])
+
+
 def fuer_app(m):
-    return {"id": m["id"], "name": m["name"], "farbe": m["farbe"], "kuerzel": m["kuerzel"], "rolle": m["rolle"]}
+    return {"id": m["id"], "name": m["name"], "farbe": m["farbe"], "kuerzel": m["kuerzel"], "rolle": m["rolle"],
+            "standard_sichtbarkeit": m.get("standard_sichtbarkeit") or "familie"}

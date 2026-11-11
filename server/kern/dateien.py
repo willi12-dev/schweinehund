@@ -228,3 +228,61 @@ def linie(punkte, hoechstens=400):
     ys = [-p[0] for p in auswahl]
     ausdehnung = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
     return [[round((x - min(xs)) / ausdehnung, 4), round((y - min(ys)) / ausdehnung, 4)] for x, y in zip(xs, ys)]
+
+
+def _sekunde(t):
+    if t is None:
+        return None
+    return t if isinstance(t, (int, float)) else t.timestamp()
+
+
+def karte(punkte, distanz_summe=None, hoechstens=800):
+    """Strecke für die Kartenansicht (REQ-003): höchstens ~800 Punkte [lat, lon, tempo-klasse] und Kilometer-Marken.
+    Tempo-Klasse 0 = langsamste, 4 = schnellste Abschnitte dieses Laufs (über ~60 m gemittelt).
+    Zeiten dürfen Sekunden seit Start oder datetime sein."""
+    if len(punkte) < 2:
+        return {"punkte": [], "km": []}
+    kum = [0.0]
+    for i in range(1, len(punkte)):
+        kum.append(kum[-1] + abstand_m(punkte[i - 1], punkte[i]))
+    faktor = (distanz_summe / kum[-1]) if distanz_summe and kum[-1] else 1.0
+    zeiten = [_sekunde(p[3]) if len(p) > 3 else None for p in punkte]
+
+    schritt = max(1, math.ceil(len(punkte) / hoechstens))
+    auswahl = list(range(0, len(punkte), schritt))
+    if auswahl[-1] != len(punkte) - 1:
+        auswahl.append(len(punkte) - 1)
+
+    tempo, a = {}, 0
+    for j in range(1, len(punkte)):
+        while a < j - 1 and kum[j] - kum[a + 1] >= 60:
+            a += 1
+        weg = kum[j] - kum[a]
+        if weg >= 20 and zeiten[j] is not None and zeiten[a] is not None and zeiten[j] > zeiten[a]:
+            tempo[j] = (zeiten[j] - zeiten[a]) / (weg * faktor / 1000)   # Sekunden pro km
+    werte = sorted(tempo[j] for j in auswahl if j in tempo)
+    if werte:
+        schnell, langsam = werte[int(0.1 * (len(werte) - 1))], werte[int(0.9 * (len(werte) - 1))]
+    spanne = (langsam - schnell) if werte else 0
+
+    ergebnis = []
+    for j in auswahl:
+        t = tempo.get(j)
+        if t is None or not spanne:
+            klasse = 2
+        else:
+            klasse = max(0, min(4, round(4 * (langsam - t) / spanne)))
+        ergebnis.append([round(punkte[j][0], 6), round(punkte[j][1], 6), klasse])
+    if len(ergebnis) > 1:
+        ergebnis[0][2] = ergebnis[1][2]
+
+    marken, n = [], 1
+    for i in range(1, len(punkte)):
+        while kum[i] * faktor >= n * 1000:
+            vorher, jetzt = kum[i - 1] * faktor, kum[i] * faktor
+            anteil = (n * 1000 - vorher) / (jetzt - vorher) if jetzt > vorher else 1.0
+            lat = punkte[i - 1][0] + anteil * (punkte[i][0] - punkte[i - 1][0])
+            lon = punkte[i - 1][1] + anteil * (punkte[i][1] - punkte[i - 1][1])
+            marken.append([round(lat, 6), round(lon, 6), n])
+            n += 1
+    return {"punkte": ergebnis, "km": marken}
