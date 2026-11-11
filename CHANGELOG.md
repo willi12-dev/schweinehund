@@ -1,5 +1,10 @@
 # Änderungen
 
+## v0.5.0 (in Entwicklung)
+- REQ-004 Punkte und Rangliste: Leistungskilometer (km + Höhenmeter ÷ 100), Rangliste Woche/Monat,
+  Horst-o-Meter mit Familienziel (Start 40 LK, Verwalter ändert), eigener Fortschritt (8 Wochen),
+  Serie „Wochen in Folge“, Bestwerte; LK an jedem Lauf. Es zählen Läufe ab 1 km.
+
 ## v0.4.0 (in Entwicklung)
 - REQ-003 Läufe und Karte: Läufe der ganzen Familie (Reiter „Familie“ / „Meine“, Tipp auf ein Mitglied zeigt
   dessen Läufe), Detailansicht mit echter Karte (MapLibre + OpenFreeMap), Strecke nach Tempo eingefärbt,

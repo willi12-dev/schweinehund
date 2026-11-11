@@ -70,6 +70,26 @@ data class LaufAnzeige(
     val sichtbarkeit: String = "familie",
     val streckePrivat: Boolean = false,
     val karte: KartenDaten? = null,
+    val lk: String = "",
+)
+
+/** Rangliste, Horst-o-Meter und eigener Fortschritt (REQ-004). */
+data class RangZeile(val platz: Int, val mitglied: Mitglied, val lk: String, val km: String, val hm: Int, val laeufe: Int)
+
+data class Horst(val ziel: String, val zielWert: Double, val ist: String, val prozent: Int, val spruch: String)
+
+data class Woche(val name: String, val lkWert: Double, val lk: String)
+
+data class Bestwert(val titel: String, val wert: String, val wann: String)
+
+data class Punktestand(
+    val titel: String,
+    val zeilen: List<RangZeile>,
+    val horst: Horst,
+    val fortschritt: List<Woche>,
+    val serie: Int,
+    val dieseWoche: Boolean,
+    val bestwerte: List<Bestwert>,
 )
 
 /** Ein Punkt der Strecke mit Tempo-Klasse (0 = langsamste … 4 = schnellste Abschnitte dieses Laufs). */
@@ -160,6 +180,7 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     eigen = (obj["eigen"] as? JsonPrimitive)?.booleanOrNull ?: true,
     sichtbarkeit = obj["sichtbarkeit"].text() ?: "familie",
     streckePrivat = (obj["strecke_privat"] as? JsonPrimitive)?.booleanOrNull ?: false,
+    lk = obj["lk"].text() ?: "",
     karte = (obj["karte"] as? JsonObject)?.let { k ->
         KartenDaten(
             punkte = (k["punkte"] as? JsonArray)?.mapNotNull { p ->
@@ -206,6 +227,41 @@ fun familieLesen(json: String, code: Int): Antwort<Familienstand> =
 
 fun einladungLesen(json: String, code: Int): Antwort<Einladung> =
     auswerten(json, code) { Einladung(it["text"].text()!!, it["link"].text()!!, it["code"].text()!!) }
+
+private fun JsonElement?.zahl(): Double = (this as? JsonPrimitive)?.doubleOrNull ?: 0.0
+private fun JsonElement?.ganz(): Int = (this as? JsonPrimitive)?.intOrNull ?: 0
+
+fun punktestandLesen(json: String, code: Int): Antwort<Punktestand> = auswerten(json, code) { o ->
+    val r = o["rangliste"]!!.jsonObject
+    val h = o["horst"]!!.jsonObject
+    val ich = o["ich"]!!.jsonObject
+    val serie = ich["serie"] as? JsonObject
+    val best = ich["bestwerte"] as? JsonObject
+    val titel = mapOf("laengster" to "Längster Lauf", "hoechster" to "Meiste Höhenmeter", "schnellster_km" to "Schnellster Kilometer")
+    Punktestand(
+        titel = r["titel"].text() ?: "",
+        zeilen = r["zeilen"]!!.jsonArray.map { z ->
+            val zo = z.jsonObject
+            val m = zo["mitglied"]!!.jsonObject
+            RangZeile(
+                platz = zo["platz"].ganz(),
+                mitglied = Mitglied(m["id"].zahl().toLong(), m["name"].text() ?: "?", m["farbe"].text() ?: "#8A94A6",
+                    m["kuerzel"].text() ?: "?", "mitglied"),
+                lk = zo["lk"].text() ?: "0", km = zo["km"].text() ?: "0", hm = zo["hm"].ganz(), laeufe = zo["laeufe"].ganz(),
+            )
+        },
+        horst = Horst(h["ziel"].text() ?: "40", h["ziel_wert"].zahl(), h["ist"].text() ?: "0", h["prozent"].ganz(), h["spruch"].text() ?: ""),
+        fortschritt = (ich["fortschritt"] as? JsonArray)?.map { w ->
+            val wo = w.jsonObject
+            Woche(wo["woche"].text() ?: "", wo["lk_wert"].zahl(), wo["lk"].text() ?: "0")
+        } ?: emptyList(),
+        serie = serie?.get("wochen").ganz(),
+        dieseWoche = (serie?.get("diese_woche") as? JsonPrimitive)?.booleanOrNull ?: false,
+        bestwerte = titel.mapNotNull { (schluessel, name) ->
+            (best?.get(schluessel) as? JsonObject)?.let { Bestwert(name, it["wert"].text() ?: "", it["wann"].text() ?: "") }
+        },
+    )
+}
 
 /** Einladungscode aus einem Link („…/e/ABCD…“) oder einer Eingabe – nur Großbuchstaben und Ziffern. */
 fun einladungsCode(eingabe: String): String =
@@ -295,6 +351,16 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
     private suspend fun ichAendern(feld: String, wert: String): Antwort<Mitglied> = sicher {
         val (text, code) = client.post("$basis/api/ich") { json(this, buildJsonObject { put(feld, wert) }) }.text()
         auswerten(text, code) { mitgliedLesen(it["ich"]!!.jsonObject) }
+    }
+
+    suspend fun rangliste(zeitraum: String): Antwort<Punktestand> = sicher {
+        val (text, code) = client.get("$basis/api/rangliste?zeitraum=$zeitraum") { anmelden() }.text()
+        punktestandLesen(text, code)
+    }
+
+    suspend fun zielSetzen(lk: Double): Antwort<Boolean> = sicher {
+        val (text, code) = client.post("$basis/api/familie/ziel") { json(this, buildJsonObject { put("lk", lk) }) }.text()
+        auswerten(text, code) { true }
     }
 
     suspend fun familienLaeufe(): Antwort<List<LaufAnzeige>> = sicher {

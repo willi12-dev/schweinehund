@@ -121,4 +121,23 @@ class ServerDienstTest {
         assertEquals(2, l.karte!!.punkte.size)
         assertEquals(1, l.karte!!.km.first().km)
     }
+
+    @Test
+    fun punktestandLesen() {
+        val json = """{"ok": true,
+          "rangliste": {"zeitraum": "woche", "titel": "KW 46 · 09.11. – 15.11.", "zeilen": [
+            {"mitglied": {"id": 2, "name": "Testläufer B", "farbe": "#5B8DEF", "kuerzel": "Te"}, "lk_wert": 6.45, "lk": "6,45", "km": "6,11", "hm": 34, "laeufe": 1, "platz": 1},
+            {"mitglied": {"id": 1, "name": "Testläufer A", "farbe": "#EF7448", "kuerzel": "Te"}, "lk_wert": 5.65, "lk": "5,65", "km": "4,93", "hm": 72, "laeufe": 1, "platz": 2}]},
+          "horst": {"ziel": "40", "ziel_wert": 40.0, "ist": "12,10", "prozent": 30, "spruch": "Horst wird unruhig."},
+          "ich": {"fortschritt": [{"woche": "KW 45", "lk_wert": 0, "lk": "0,0"}, {"woche": "KW 46", "lk_wert": 5.65, "lk": "5,7"}],
+                  "serie": {"wochen": 1, "diese_woche": true},
+                  "bestwerte": {"laengster": {"wert": "4,93 km", "wann": "10.11."}}}}"""
+        val p = punktestandLesen(json, 200).wert!!
+        assertEquals(listOf("Testläufer B", "Testläufer A"), p.zeilen.map { it.mitglied.name })
+        assertEquals(30, p.horst.prozent)
+        assertEquals(40.0, p.horst.zielWert)
+        assertEquals(2, p.fortschritt.size)
+        assertEquals(1, p.serie)
+        assertEquals("Längster Lauf", p.bestwerte.single().titel)
+    }
 }

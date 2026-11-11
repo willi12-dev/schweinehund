@@ -111,6 +111,8 @@ fun App(
     var detail by remember { mutableStateOf<LaufAnzeige?>(null) }
     var beschaeftigt by remember { mutableStateOf(false) }
     var bereich by remember { mutableStateOf(Bereich.Familie) }
+    var zeitraum by remember { mutableStateOf("woche") }
+    var punktestand by remember { mutableStateOf<Punktestand?>(null) }
     val scope = rememberCoroutineScope()
 
     fun abmelden(grund: String) {
@@ -134,6 +136,7 @@ fun App(
         pruefen(server.liste())?.let { laeufe = it }
         pruefen(server.familienLaeufe())?.let { familienLaeufe = it }
         person?.let { p -> pruefen(server.liste(p.id))?.let { personLaeufe = it } }
+        pruefen(server.rangliste(zeitraum))?.let { punktestand = it }
     }
 
     fun angemeldet(a: Anmeldung) {
@@ -270,7 +273,23 @@ fun App(
                                     }
                                 },
                             )
-                            Bereich.Rangliste -> RanglisteSeite()
+                            Bereich.Rangliste -> RanglisteSeite(
+                                stand = punktestand, zeitraum = zeitraum,
+                                verwalter = familie?.ich?.istVerwalter == true, beschaeftigt = beschaeftigt,
+                                zeitraumWaehlen = { z ->
+                                    zeitraum = z
+                                    punktestand = null
+                                    scope.launch { pruefen(server.rangliste(z))?.let { punktestand = it } }
+                                },
+                                zielSetzen = { lk ->
+                                    scope.launch {
+                                        beschaeftigt = true
+                                        pruefen(server.zielSetzen(lk))
+                                        pruefen(server.rangliste(zeitraum))?.let { punktestand = it }
+                                        beschaeftigt = false
+                                    }
+                                },
+                            )
                             Bereich.Ich -> IchSeite(
                                 ich = familie?.ich, appVersion = appVersion, beschaeftigt = beschaeftigt,
                                 standardWaehlen = { wert ->
@@ -294,7 +313,7 @@ fun App(
                     Navigation(bereich) {
                         if (it == Bereich.Laeufe && bereich != Bereich.Laeufe) person = null
                         bereich = it
-                        if (it == Bereich.Familie || it == Bereich.Laeufe) scope.launch { neuLaden() }
+                        if (it != Bereich.Ich) scope.launch { neuLaden() }
                     }
                 }
             }
@@ -423,7 +442,8 @@ private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -
             Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, modifier = Modifier.weight(1f))
             Text(lauf.startText, color = Farben.Grau, fontSize = 13.sp)
         }
-        Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }, lauf.puls?.let { "♥ $it" }).joinToString("  ·  "),
+        Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }, lauf.puls?.let { "♥ $it" },
+            lauf.lk.takeIf { it.isNotBlank() }?.let { "$it LK" }).joinToString("  ·  "),
             color = Farben.Tinte, fontSize = 14.sp)
         val strecke = when {
             lauf.hatStrecke && lauf.eigen && lauf.sichtbarkeit == "ich" -> "  ·  Strecke nur für dich"
@@ -522,7 +542,11 @@ private fun LaufDetail(
             }
             Text(lauf.startText, color = Farben.Orange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
-        Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 40.sp)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text("${lauf.distanzKm} km", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 40.sp, modifier = Modifier.weight(1f))
+            if (lauf.lk.isNotBlank()) Text("${lauf.lk} LK", color = Farben.Orange, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp,
+                modifier = Modifier.padding(bottom = 8.dp))
+        }
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }).joinToString("  ·  "), color = Farben.Tinte, fontSize = 16.sp)
         val extra = listOfNotNull(lauf.puls?.let { "Puls Ø $it" }, lauf.kadenz?.let { "Kadenz $it" }, lauf.schritte?.let { "${tausender(it)} Schritte" })
         if (extra.isNotEmpty()) Text(extra.joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)

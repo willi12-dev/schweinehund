@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
@@ -239,15 +240,104 @@ private fun MitgliedKarte(m: Mitglied, verwalter: Boolean, beschaeftigt: Boolean
     }
 }
 
-// ------------------------------------------------------------------ Rangliste (Platzhalter bis REQ-004)
+// ------------------------------------------------------------------ Rangliste (REQ-004)
 @Composable
-fun RanglisteSeite() {
+fun RanglisteSeite(
+    stand: Punktestand?,
+    zeitraum: String,
+    verwalter: Boolean,
+    beschaeftigt: Boolean,
+    zeitraumWaehlen: (String) -> Unit,
+    zielSetzen: (Double) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Auswahl("Woche", zeitraum == "woche") { zeitraumWaehlen("woche") }
+        Auswahl("Monat", zeitraum == "monat") { zeitraumWaehlen("monat") }
+    }
+    if (stand == null) {
+        Text("Horst rechnet noch …", color = Farben.Grau, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
+        return
+    }
+    Text(stand.titel, color = Farben.Grau, fontSize = 13.sp)
+
+    // Horst-o-Meter: gemeinsames Wochenziel
     Karte(dunkel = true) {
-        Text("KOMMT MIT v0.5.0", color = Farben.Hell, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.4.sp)
-        Text("Hier entsteht die Rangliste.", color = Farben.Weiss, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-        Text("Gezählt werden Leistungskilometer: Jeder Kilometer zählt, und 100 Höhenmeter bergauf zählen wie ein " +
-            "zusätzlicher Kilometer. Bis dahin: einfach laufen – Horst führt solange.",
-            color = Farben.Hell, fontSize = 14.sp, lineHeight = 20.sp)
+        Text("HORST-O-METER · DIESE WOCHE", color = Farben.Hell, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.4.sp)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(stand.horst.ist, color = Farben.Weiss, fontWeight = FontWeight.ExtraBold, fontSize = 30.sp)
+            Text("  von ${stand.horst.ziel} LK", color = Farben.Hell, fontSize = 15.sp, modifier = Modifier.padding(bottom = 4.dp))
+            Spacer(Modifier.weight(1f))
+            Text("${stand.horst.prozent} %", color = Farben.Orange, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+        }
+        Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(Farben.Tinte)) {
+            Box(Modifier.fillMaxWidth((stand.horst.prozent.coerceIn(0, 100) / 100f)).height(12.dp)
+                .clip(RoundedCornerShape(6.dp)).background(Farben.Orange))
+        }
+        Text(stand.horst.spruch, color = Farben.Weiss, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 16.sp)
+        if (verwalter) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Familienziel", color = Farben.Hell, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { zielSetzen((stand.horst.zielWert - 5).coerceAtLeast(5.0)) }, enabled = !beschaeftigt) {
+                    Text("− 5", color = Farben.Weiss, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = { zielSetzen(stand.horst.zielWert + 5) }, enabled = !beschaeftigt) {
+                    Text("+ 5", color = Farben.Weiss, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+
+    // Rangliste
+    stand.zeilen.forEach { z ->
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Farben.Weiss).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${z.platz}.", color = if (z.platz == 1 && z.laeufe > 0) Farben.Orange else Farben.Grau,
+                fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.size(width = 34.dp, height = 28.dp))
+            Kreis(z.mitglied, 38)
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(z.mitglied.name, color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(if (z.laeufe == 0) "noch kein Lauf – Horst grüßt" else
+                    "${z.laeufe} ${if (z.laeufe == 1) "Lauf" else "Läufe"} · ${z.km} km · ↑ ${z.hm} m",
+                    color = Farben.Grau, fontSize = 12.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(z.lk, color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text("LK", color = Farben.Grau, fontSize = 11.sp)
+            }
+        }
+    }
+    Text("LK = Leistungskilometer: Kilometer + Höhenmeter ÷ 100. Es zählen Läufe ab 1 km.", color = Farben.Grau, fontSize = 12.sp)
+
+    // Eigener Fortschritt
+    Karte {
+        Text("Dein Fortschritt", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+        Text(when {
+            stand.serie == 0 -> "Noch keine Serie. Eine Woche mit Lauf – und Horst hat ein Problem."
+            stand.serie == 1 -> "1 Woche dabei${if (stand.dieseWoche) "" else " – lauf diese Woche, sonst reißt die Serie"}."
+            else -> "${stand.serie} Wochen in Folge dabei${if (stand.dieseWoche) "" else " – diese Woche fehlt noch ein Lauf"}."
+        }, color = Farben.Tinte, fontSize = 14.sp)
+        val hoechster = (stand.fortschritt.maxOfOrNull { it.lkWert } ?: 0.0).coerceAtLeast(1.0)
+        Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
+            stand.fortschritt.forEachIndexed { i, w ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (w.lkWert > 0) Text(w.lk, color = Farben.Grau, fontSize = 9.sp)
+                    Box(Modifier.fillMaxWidth().height((70 * w.lkWert / hoechster).dp.coerceAtLeast(3.dp))
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (i == stand.fortschritt.lastIndex) Farben.Orange else Farben.Schiefer))
+                    Text(w.name.removePrefix("KW "), color = Farben.Grau, fontSize = 9.sp)
+                }
+            }
+        }
+        stand.bestwerte.forEach { b ->
+            Row {
+                Text(b.titel, color = Farben.Grau, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text(b.wert, color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("  ${b.wann}", color = Farben.Grau, fontSize = 12.sp)
+            }
+        }
     }
 }
 
