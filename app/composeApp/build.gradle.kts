@@ -10,6 +10,7 @@ plugins {
 // Eine Versionsnummer für Server und App: die Datei VERSION im Repo.
 val appVersion = rootProject.file("../VERSION").readText().trim()
 // Adresse des Servers – GitHub Actions setzt sie mit -PserverUrl=…; lokal der Emulator-Rechner.
+val bauNummer = (findProperty("bauNummer") as String?)?.takeIf { it.isNotBlank() } ?: "lokal"
 val serverUrl = (findProperty("serverUrl") as String?)?.takeIf { it.isNotBlank() } ?: "http://10.0.2.2:5000"
 
 kotlin {
@@ -56,6 +57,7 @@ android {
         versionName = appVersion
         versionCode = appVersion.split(".").let { it[0].toInt() * 10000 + it[1].toInt() * 100 + it[2].toInt() }
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+        buildConfigField("String", "BAU", "\"$bauNummer\"")
     }
     // Feste Testsignatur (nur für Test-Versionen, Passwort ist bewusst kein Geheimnis): so lässt sich jede neue
     // Test-App über die alte installieren. Für eine echte Veröffentlichung kommt ein eigener Schlüssel als Secret.

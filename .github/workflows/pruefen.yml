@@ -58,7 +58,7 @@ jobs:
           echo "VERSION=$(cat VERSION)" >> "$GITHUB_ENV"
           echo "Server: ${URL:-(keiner – Secret PA_USERNAME fehlt)}"
       - name: App-Tests und Bau
-        run: gradle -p app :composeApp:testDebugUnitTest :composeApp:assembleDebug -PserverUrl="$SERVER_URL" --stacktrace
+        run: gradle -p app :composeApp:testDebugUnitTest :composeApp:assembleDebug -PserverUrl="$SERVER_URL" -PbauNummer="${{ github.run_number }}" --stacktrace
       - name: APK benennen
         run: cp app/composeApp/build/outputs/apk/debug/composeApp-debug.apk "schweinehund-v$VERSION.apk"
       - uses: actions/upload-artifact@v4
@@ -75,4 +75,4 @@ jobs:
           gh release view test >/dev/null 2>&1 || gh release create test --prerelease --target entwicklung \
             --title "Test-Version (entwicklung)" --notes "Immer der neueste Stand von entwicklung. Nur zum Testen."
           gh release upload test schweinehund-test.apk --clobber
-          gh release edit test --title "Test-Version v$VERSION (entwicklung)" --target "$GITHUB_SHA"
+          gh release edit test --title "Test-Version v$VERSION · Bau ${{ github.run_number }} (entwicklung)" --target "$GITHUB_SHA"

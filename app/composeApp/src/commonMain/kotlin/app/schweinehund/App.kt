@@ -165,7 +165,7 @@ fun App(
             val oben = warteschlange.firstOrNull()
             if (oben != null) {
                 Kontrollkarte(
-                    eintrag = oben, name = name, beschaeftigt = beschaeftigt,
+                    eintrag = oben, appVersion = appVersion, name = name, beschaeftigt = beschaeftigt,
                     nameAendern = { name = it; plattform.schreiben("laeufer", it.trim()) },
                     speichern = { v ->
                         scope.launch {
@@ -280,6 +280,7 @@ private fun LaufZeile(lauf: LaufAnzeige, oeffnen: () -> Unit) {
 @Composable
 private fun Kontrollkarte(
     eintrag: Wartend,
+    appVersion: String,
     name: String,
     beschaeftigt: Boolean,
     nameAendern: (String) -> Unit,
@@ -295,6 +296,7 @@ private fun Kontrollkarte(
             if (v == null) {
                 Text("Das hat nicht geklappt", color = Farben.Tinte, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
                 Text("${eintrag.name}: ${eintrag.fehler ?: "unbekannter Fehler"}", color = Farben.Tinte, fontSize = 15.sp)
+                Text("App v$appVersion", color = Farben.Grau, fontSize = 12.sp)
                 Button(onClick = verwerfen, colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Okay") }
                 return@Column
             }

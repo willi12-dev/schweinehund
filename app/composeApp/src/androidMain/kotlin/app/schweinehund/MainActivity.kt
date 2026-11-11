@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
             App(
                 server = ServerDienst(BuildConfig.SERVER_URL),
                 plattform = plattform,
-                appVersion = BuildConfig.VERSION_NAME,
+                appVersion = "${BuildConfig.VERSION_NAME} · Bau ${BuildConfig.BAU}",
                 geteilt = geteilt.value,
                 geteiltErledigt = { geteilt.value = emptyList() },
             )
