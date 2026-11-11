@@ -4,7 +4,8 @@
 - REQ-005 Sonntagsshow: Sonntag 19 Uhr wird die Woche eingefroren und Karte für Karte enthüllt – Horsts Bilanz,
   Sonderpreise (Bergziege, Frühaufsteher, Dauerläufer, Tempomacher, Comeback), Platz 3, Platz 2,
   Member of the Week, Einsatz der Woche (Familienwette) und am Monatsende Member of the Month.
-- Push „Die Sonntagsshow ist da!“ an alle über eine tägliche Aufgabe auf PythonAnywhere (18:00 UTC).
+- Push „Die Sonntagsshow ist da!“ an alle um 19 Uhr: ein geplanter GitHub-Lauf weckt den Server sonntags
+  (PythonAnywhere kostenlos hat keine geplanten Aufgaben).
 - Ruhmeshalle mit allen Shows; der Verwalter legt den Einsatz fest und kann die Show zum Testen vorziehen.
 - Datenbank-Änderung 9: Shows und Push-Schlüssel am Mitglied.
 

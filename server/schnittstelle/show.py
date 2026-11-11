@@ -1,4 +1,8 @@
 """Sonntagsshow, Ruhmeshalle, Familienwette und Push-Anmeldung (REQ-005)."""
+import hashlib
+import hmac
+import os
+
 from flask import Blueprint, g, jsonify, request
 
 from kern import datenbank, geraete, show
@@ -69,3 +73,24 @@ def push_merken():
     con.execute("UPDATE mitglieder SET push_token = ? WHERE id = ?", (token, g.ich["id"]))
     con.commit()
     return jsonify(ok=True)
+
+
+def aufgaben_schluessel():
+    """Schlüssel für den Sonntags-Wecker aus GitHub Actions – abgeleitet aus SECRET_KEY (kein eigenes Secret nötig)."""
+    geheim = os.environ.get("SECRET_KEY", "")
+    return hashlib.sha256(("sonntagsshow:" + geheim).encode()).hexdigest() if geheim else ""
+
+
+@bp.post("/api/aufgabe/sonntagsshow")
+def aufgabe():
+    """Sonntags 19 Uhr: Show erstellen und Push an alle – der kostenlose PythonAnywhere-Tarif hat keine geplanten
+    Aufgaben, deshalb weckt ein geplanter GitHub-Actions-Lauf den Server. Mehrfaches Wecken schadet nicht."""
+    soll = aufgaben_schluessel()
+    if not soll:
+        return fehler("Aufgabe auf diesem Server nicht eingerichtet.", 503)
+    if not hmac.compare_digest(request.headers.get("X-Schweinehund-Aufgabe", ""), soll):
+        return fehler("Falscher Schlüssel.", 403)
+    con = datenbank.db()
+    ergebnis = show.aufgabe(con)
+    con.commit()
+    return jsonify(ok=True, ergebnis=ergebnis)

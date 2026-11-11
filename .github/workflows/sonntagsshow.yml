@@ -1,0 +1,29 @@
+# REQ-005: Sonntagsshow-Wecker. Der kostenlose PythonAnywhere-Tarif kennt keine geplanten Aufgaben,
+# deshalb ruft GitHub den Server sonntags um 17:05 und 18:05 UTC auf. Der Server entscheidet selbst, ob
+# es in Berlin schon 19 Uhr ist (Sommer: erster Aufruf, Winter: zweiter) und schickt den Push genau einmal.
+# Geplante Läufe nutzen die Datei auf dem Standardzweig (main) – aktiv also ab „Einspielen“.
+name: Sonntagsshow
+
+on:
+  schedule:
+    - cron: "5 17,18 * * 0"
+  workflow_dispatch:
+
+jobs:
+  wecken:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Server wecken
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_HOST: ${{ secrets.PA_HOST }}
+          PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+        run: |
+          if [[ "$PA_HOST" == www* ]]; then URL="https://$PA_USERNAME.pythonanywhere.com";
+          else URL="https://$PA_USERNAME.eu.pythonanywhere.com"; fi
+          SCHLUESSEL=$(python3 -c "import hashlib,os; g=hashlib.sha256(('schweinehund:'+os.environ['PA_API_TOKEN'].strip()).encode()).hexdigest(); print(hashlib.sha256(('sonntagsshow:'+g).encode()).hexdigest())")
+          for versuch in 1 2 3; do
+            if curl -fsS -m 90 -X POST -H "X-Schweinehund-Aufgabe: $SCHLUESSEL" "$URL/api/aufgabe/sonntagsshow"; then echo; exit 0; fi
+            sleep 30
+          done
+          exit 1

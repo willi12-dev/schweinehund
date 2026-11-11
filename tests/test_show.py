@@ -161,3 +161,27 @@ def test_schnittstellen():
     b = c.application.test_client()
     b.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + s
     assert b.post("/api/show/vorziehen").status_code == 403 and b.post("/api/familie/wette", json={"text": "x"}).status_code == 403
+
+
+def test_wecker_schnittstelle_nur_mit_schluessel():
+    import hashlib
+    import os
+    from schnittstelle.show import aufgaben_schluessel
+    _, c, _ = angemeldeter_server()
+    fremd = c.application.test_client()
+    alt = os.environ.get("SECRET_KEY")
+    os.environ.pop("SECRET_KEY", None)
+    try:
+        assert fremd.post("/api/aufgabe/sonntagsshow").status_code == 503
+        token = "beispiel-token"
+        os.environ["SECRET_KEY"] = hashlib.sha256(("schweinehund:" + token).encode()).hexdigest()
+        # so rechnet der GitHub-Lauf den Schlüssel aus PA_API_TOKEN aus
+        erwartet = hashlib.sha256(("sonntagsshow:" + os.environ["SECRET_KEY"]).encode()).hexdigest()
+        assert aufgaben_schluessel() == erwartet
+        assert fremd.post("/api/aufgabe/sonntagsshow", headers={"X-Schweinehund-Aufgabe": "falsch"}).status_code == 403
+        r = fremd.post("/api/aufgabe/sonntagsshow", headers={"X-Schweinehund-Aufgabe": erwartet}).get_json()
+        assert r["ok"] and r["ergebnis"] in ("keine Show fällig", "schon angekündigt") or r["ergebnis"].startswith("Push an")
+    finally:
+        os.environ.pop("SECRET_KEY", None)
+        if alt is not None:
+            os.environ["SECRET_KEY"] = alt
