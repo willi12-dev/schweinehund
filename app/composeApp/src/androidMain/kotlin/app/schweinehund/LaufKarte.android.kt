@@ -11,7 +11,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Shader
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,8 +58,20 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
 @Composable
-actual fun LaufKarte(karte: KartenDaten, modifier: Modifier) {
+actual fun LaufKarte(karte: KartenDaten, fotos: List<Foto>, fotoTippen: (Int) -> Unit, modifier: Modifier) {
     val context = LocalContext.current
+    // REQ-014: Vorschaubilder der Fotos laden, daraus runde Kartensymbole machen
+    val lader = LocalBildLader.current
+    val dichte = context.resources.displayMetrics.density
+    val mitStelle = fotos.withIndex().filter { it.value.lat != null && it.value.lon != null }
+    val symbole by produceState<Map<Long, Bitmap>>(emptyMap(), mitStelle.map { it.value.id }) {
+        value = mitStelle.mapNotNull { (_, f) ->
+            lader?.laden(f.vorschau)?.asAndroidBitmap()?.let { f.id to fotoSymbol(it, dichte) }
+        }.toMap()
+    }
+    var stil by remember { mutableStateOf<Style?>(null) }
+    val aktuelleFotos by rememberUpdatedState(fotos)
+    val tippen by rememberUpdatedState(fotoTippen)
     val lebenszyklus = LocalLifecycleOwner.current.lifecycle
     val ansicht = remember {
         MapLibre.getInstance(context)
@@ -93,7 +115,15 @@ actual fun LaufKarte(karte: KartenDaten, modifier: Modifier) {
             map.uiSettings.isRotateGesturesEnabled = false
             map.uiSettings.isTiltGesturesEnabled = false
             map.uiSettings.isCompassEnabled = false
-            map.setStyle(Style.Builder().fromUri(KARTEN_STIL)) { stil -> zeichnen(stil, karte) }
+            map.setStyle(Style.Builder().fromUri(KARTEN_STIL)) { s -> zeichnen(s, karte); stil = s }
+            map.addOnMapClickListener { punkt ->
+                val bildschirm = map.projection.toScreenLocation(punkt)
+                val treffer = map.queryRenderedFeatures(bildschirm, *(0 until MAX_FOTOS).map { "foto-$it" }.toTypedArray())
+                val id = treffer.firstOrNull()?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
+                val index = aktuelleFotos.indexOfFirst { it.id == id }
+                if (index >= 0) tippen(index)
+                index >= 0
+            }
             val punkte = karte.punkte.map { LatLng(it.lat, it.lon) }.distinct()
             if (punkte.size >= 2) {
                 val grenzen = LatLngBounds.Builder().includes(punkte).build()
@@ -103,6 +133,62 @@ actual fun LaufKarte(karte: KartenDaten, modifier: Modifier) {
             }
         }
         onDispose { }
+    }
+
+    // REQ-014: Foto-Symbole (neu) setzen, sobald Kartenstil und Bilder da sind
+    LaunchedEffect(stil, symbole, fotos) {
+        val s = stil ?: return@LaunchedEffect
+        fotosZeichnen(s, fotos, symbole)
+    }
+}
+
+/** Rundes Mini-Foto mit weißem Rand und kleiner Spitze nach unten (wie im Entwurf, Variante B). */
+private fun fotoSymbol(bild: Bitmap, dichte: Float): Bitmap {
+    val d = (54 * dichte).toInt()
+    val rand = 3 * dichte
+    val spitze = 9 * dichte
+    val ergebnis = Bitmap.createBitmap(d, (d + spitze).toInt(), Bitmap.Config.ARGB_8888)
+    val leinwand = Canvas(ergebnis)
+    val weiss = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; setShadowLayer(3 * dichte, 0f, dichte, 0x55454B5A) }
+    val dreieck = android.graphics.Path().apply {
+        moveTo(d / 2f - 7 * dichte, d - 4 * dichte); lineTo(d / 2f + 7 * dichte, d - 4 * dichte); lineTo(d / 2f, d + spitze - dichte); close()
+    }
+    leinwand.drawPath(dreieck, weiss)
+    leinwand.drawCircle(d / 2f, d / 2f, d / 2f - dichte, weiss)
+    val innen = d / 2f - dichte - rand
+    val maske = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader = BitmapShader(bild, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+            val faktor = (2 * innen) / minOf(bild.width, bild.height)
+            setLocalMatrix(Matrix().apply {
+                postScale(faktor, faktor)
+                postTranslate(d / 2f - bild.width * faktor / 2, d / 2f - bild.height * faktor / 2)
+            })
+        }
+    }
+    leinwand.drawCircle(d / 2f, d / 2f, innen, maske)
+    return ergebnis
+}
+
+private fun fotosZeichnen(stil: Style, fotos: List<Foto>, symbole: Map<Long, Bitmap>) {
+    for (i in 0 until MAX_FOTOS) {
+        stil.removeLayer("foto-$i")
+        stil.removeSource("foto-$i")
+        stil.removeImage("foto-$i")
+    }
+    val versatz = fotoVersatz(fotos)
+    fotos.forEachIndexed { i, f ->
+        val lat = f.lat ?: return@forEachIndexed
+        val lon = f.lon ?: return@forEachIndexed
+        val bild = symbole[f.id] ?: return@forEachIndexed
+        if (i >= MAX_FOTOS) return@forEachIndexed
+        stil.addImage("foto-$i", bild)
+        stil.addSource(GeoJsonSource("foto-$i", Feature.fromGeometry(Point.fromLngLat(lon, lat)).apply { addNumberProperty("id", f.id) }))
+        // Fotos an fast derselben Stelle rücken je eine Bildbreite nach rechts
+        stil.addLayer(SymbolLayer("foto-$i", "foto-$i").withProperties(
+            PropertyFactory.iconImage("foto-$i"), PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+            PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.iconOffset(arrayOf(versatz[i] * 56f, 0f)),
+        ))
     }
 }
 

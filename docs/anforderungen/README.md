@@ -16,6 +16,6 @@
 | REQ-011 | Automatik-Weg: Health Sync (optional, falls Teilen im Alltag nervt) | geplant | – |
 | REQ-012 | iPhone-Version mit Apple Health | geplant | – |
 | REQ-013 | Lauf-Fotos: bis zu drei Bilder pro Lauf, alle sehen alles („nur für mich“ entfällt) | umgesetzt | v0.8.0 |
-| REQ-014 | Fotos auf der Strecke: Mini-Fotos auf der Karte und in der Lauf-Liste | geplant | v0.9.0 |
+| REQ-014 | Fotos auf der Strecke: Mini-Fotos auf der Karte und in der Lauf-Liste | in Entwicklung | v0.9.0 |
 
 Reihenfolge ab REQ-005 kann der Familienrat ändern.

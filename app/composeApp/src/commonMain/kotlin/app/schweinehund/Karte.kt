@@ -9,9 +9,20 @@ val TEMPO_FARBEN = listOf("#5B8DEF", "#3FB8AF", "#9CC65A", "#E8B33F", "#EF7448")
 /** Kartenstil von OpenFreeMap (kostenlos, ohne Schlüssel) – „Positron“ ist hell und grau. */
 const val KARTEN_STIL = "https://tiles.openfreemap.org/styles/positron"
 
-/** Echte Karte mit der Strecke (REQ-003) – Android: MapLibre; iPhone folgt mit REQ-012. */
+/** Echte Karte mit der Strecke (REQ-003) – Android: MapLibre; iPhone folgt mit REQ-012.
+ *  REQ-014: Fotos mit Stelle sitzen als runde Mini-Bilder auf der Strecke; antippen → fotoTippen(Index in fotos). */
 @Composable
-expect fun LaufKarte(karte: KartenDaten, modifier: Modifier)
+expect fun LaufKarte(karte: KartenDaten, fotos: List<Foto>, fotoTippen: (Int) -> Unit, modifier: Modifier)
+
+/** REQ-014: Fotos, die (fast) an derselben Stelle liegen, nebeneinander rücken – Versatz in Bildbreiten. */
+fun fotoVersatz(fotos: List<Foto>, naheKm: Double = 0.08): List<Int> {
+    val versatz = MutableList(fotos.size) { 0 }
+    for (i in fotos.indices) {
+        val km = fotos[i].km ?: continue
+        versatz[i] = (0 until i).count { j -> fotos[j].km?.let { kotlin.math.abs(it - km) < naheKm } == true }
+    }
+    return versatz
+}
 
 /** Strecke in zusammenhängende Abschnitte gleicher Tempo-Klasse zerlegen (jeder Abschnitt beginnt am Ende des vorigen). */
 fun abschnitte(punkte: List<KartenPunkt>): List<Pair<Int, List<KartenPunkt>>> {

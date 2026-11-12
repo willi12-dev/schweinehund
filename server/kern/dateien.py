@@ -216,10 +216,11 @@ def km_zeiten(punkte, distanz_summe):
             "rest_s": round(gesamt - (marken[-1] if marken else 0.0))}
 
 
-def linie(punkte, hoechstens=400):
-    """Strecke als normierte Linie (0..1, Norden oben, seitenrichtig) – für die Vorschau ohne Kartenkacheln."""
+def linie(punkte, hoechstens=400, orte=None):
+    """Strecke als normierte Linie (0..1, Norden oben, seitenrichtig) – für die Vorschau ohne Kartenkacheln.
+    Mit orte=[(lat, lon), …] (REQ-014: Fotos) kommt zusätzlich deren Lage im selben Maßstab zurück: (linie, orte_xy)."""
     if len(punkte) < 2:
-        return []
+        return ([], [None for _ in orte]) if orte is not None else []
     schritt = max(1, math.ceil(len(punkte) / hoechstens))
     auswahl = punkte[::schritt] + ([punkte[-1]] if (len(punkte) - 1) % schritt else [])
     lat0 = sum(p[0] for p in auswahl) / len(auswahl)
@@ -227,7 +228,12 @@ def linie(punkte, hoechstens=400):
     xs = [p[1] * k for p in auswahl]
     ys = [-p[0] for p in auswahl]
     ausdehnung = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
-    return [[round((x - min(xs)) / ausdehnung, 4), round((y - min(ys)) / ausdehnung, 4)] for x, y in zip(xs, ys)]
+    x0, y0 = min(xs), min(ys)
+    ergebnis = [[round((x - x0) / ausdehnung, 4), round((y - y0) / ausdehnung, 4)] for x, y in zip(xs, ys)]
+    if orte is None:
+        return ergebnis
+    return ergebnis, [None if o is None else [round((o[1] * k - x0) / ausdehnung, 4), round((-o[0] - y0) / ausdehnung, 4)]
+                      for o in orte]
 
 
 def _sekunde(t):

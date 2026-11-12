@@ -120,6 +120,10 @@ CREATE TABLE IF NOT EXISTS fotos (
     datei       TEXT NOT NULL,             -- Name ohne Endung
     breite      INTEGER NOT NULL,
     hoehe       INTEGER NOT NULL,
-    angelegt    TEXT NOT NULL              -- UTC, ISO
+    angelegt    TEXT NOT NULL,             -- UTC, ISO
+    aufgenommen TEXT,                      -- REQ-014: Aufnahmezeit (UTC, ISO), NULL = unbekannt
+    lat         REAL,                      -- REQ-014: Stelle auf der Strecke (NULL = Lauf ohne Strecke)
+    lon         REAL,
+    km          REAL
 );
 CREATE INDEX IF NOT EXISTS fotos_lauf ON fotos (lauf_id);

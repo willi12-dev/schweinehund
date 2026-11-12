@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +43,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -99,6 +105,37 @@ fun FotoVorschauen(fotos: List<Foto>, groesse: Int = 46) {
     }
 }
 
+/** REQ-014: Lauf-Liste – kleine Streckenzeichnung, die Fotos sitzen als Mini-Bilder an ihrer Stelle. */
+@Composable
+fun MiniStrecke(linie: List<Pair<Float, Float>>, fotos: List<Foto>, breite: Int = 112, hoehe: Int = 92) {
+    val rand = 14f
+    val maxX = linie.maxOf { it.first }.coerceAtLeast(0.001f)
+    val maxY = linie.maxOf { it.second }.coerceAtLeast(0.001f)
+    val s = minOf((breite - 2 * rand) / maxX, (hoehe - 2 * rand) / maxY)
+    val ox = rand + (breite - 2 * rand - maxX * s) / 2
+    val oy = rand + (hoehe - 2 * rand - maxY * s) / 2
+    Box(Modifier.width(breite.dp).height(hoehe.dp).clip(RoundedCornerShape(14.dp)).background(Farben.Grund)) {
+        Canvas(Modifier.fillMaxSize()) {
+            val d = density
+            val pfad = Path()
+            linie.forEachIndexed { i, (x, y) ->
+                val px = (ox + x * s) * d
+                val py = (oy + y * s) * d
+                if (i == 0) pfad.moveTo(px, py) else pfad.lineTo(px, py)
+            }
+            drawPath(pfad, Farben.Orange, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            val (sx, sy) = linie.first()
+            drawCircle(Farben.Schiefer, radius = 3.5.dp.toPx(), center = Offset((ox + sx * s) * d, (oy + sy * s) * d))
+        }
+        val g = 26
+        fotos.forEach { f ->
+            val (x, y) = f.mini ?: return@forEach
+            FotoBild(f.vorschau, Modifier.offset(x = (ox + x * s - g / 2f).dp, y = (oy + y * s - g / 2f).dp).size(g.dp)
+                .shadow(3.dp, CircleShape).clip(CircleShape).border(2.dp, Farben.Weiss, CircleShape))
+        }
+    }
+}
+
 /** Lauf-Detail: Fotos groß oben; beim eigenen Lauf Knöpfe zum Hinzufügen. */
 @Composable
 fun FotoStreifen(
@@ -132,12 +169,12 @@ fun FotoStreifen(
 
 /** Kontrollkarte: Fotos, die nach dem Speichern mit hochgeladen werden. */
 @Composable
-fun FotoAuswahlKarte(fotos: List<ByteArray>, aktiv: Boolean, hinzufuegen: (kamera: Boolean) -> Unit, entfernen: (Int) -> Unit) {
+fun FotoAuswahlKarte(fotos: List<FotoDaten>, aktiv: Boolean, hinzufuegen: (kamera: Boolean) -> Unit, entfernen: (Int) -> Unit) {
     val lader = LocalBildLader.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (fotos.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            fotos.forEachIndexed { i, daten ->
-                val bild = remember(daten) { lader?.anzeigen(daten) }
+            fotos.forEachIndexed { i, foto ->
+                val bild = remember(foto) { lader?.anzeigen(foto.jpeg) }
                 Box(Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)).background(Farben.Hell).clickable(enabled = aktiv) { entfernen(i) }) {
                     bild?.let { Image(it, "Ausgewähltes Foto", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                     Text("✕", color = Farben.Weiss, fontSize = 12.sp, fontWeight = FontWeight.Bold,
@@ -178,7 +215,8 @@ fun FotoVollbild(fotos: List<Foto>, start: Int, eigen: Boolean, beschaeftigt: Bo
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = schliessen) { Text("‹ Zurück", color = Farben.Weiss, fontSize = 16.sp) }
             Spacer(Modifier.weight(1f))
-            if (fotos.size > 1) Text("${index + 1} / ${fotos.size}", color = Farben.Hell, fontSize = 14.sp)
+            val text = listOfNotNull(foto.ortText.ifBlank { null }, if (fotos.size > 1) "${index + 1} / ${fotos.size}" else null)
+            if (text.isNotEmpty()) Text(text.joinToString("   ·   "), color = Farben.Hell, fontSize = 14.sp)
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)) {

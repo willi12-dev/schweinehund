@@ -75,10 +75,21 @@ data class LaufAnzeige(
     val kommentareAnzahl: Int = 0,
     // REQ-013: bis zu drei Fotos zum Lauf
     val fotos: List<Foto> = emptyList(),
+    // REQ-014: kleine Streckenzeichnung für die Lauf-Liste (0..1, gleicher Maßstab wie Foto.mini)
+    val mini: List<Pair<Float, Float>> = emptyList(),
 )
 
-/** REQ-013: ein Foto zum Lauf. url/vorschau sind Pfade auf dem Server (mit Schlüssel abrufen). */
-data class Foto(val id: Long, val url: String, val vorschau: String, val breite: Int, val hoehe: Int)
+/** REQ-013: ein Foto zum Lauf. url/vorschau sind Pfade auf dem Server (mit Schlüssel abrufen).
+ *  REQ-014: Stelle auf der Strecke (lat/lon, km; null = Lauf ohne Strecke), Text „bei km 3,9 · 10:47“,
+ *  mini = Lage in der kleinen Streckenzeichnung der Lauf-Liste. */
+data class Foto(
+    val id: Long, val url: String, val vorschau: String, val breite: Int, val hoehe: Int,
+    val lat: Double? = null, val lon: Double? = null, val km: Double? = null, val ortText: String = "",
+    val mini: Pair<Float, Float>? = null,
+)
+
+/** REQ-013/014: ein ausgewähltes Foto, fertig zum Hochladen – JPEG und Aufnahmezeit (ISO, falls bekannt). */
+class FotoDaten(val jpeg: ByteArray, val aufgenommen: String?)
 
 const val MAX_FOTOS = 3
 
@@ -238,6 +249,7 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     kommentare = kommentareLesen(obj["kommentare"]),
     kommentareAnzahl = (obj["kommentare_anzahl"] as? JsonPrimitive)?.intOrNull ?: 0,
     fotos = fotosLesen(obj["fotos"]),
+    mini = (obj["mini"] as? JsonArray)?.mapNotNull { punktLesen(it) } ?: emptyList(),
     karte = (obj["karte"] as? JsonObject)?.let { k ->
         KartenDaten(
             punkte = (k["punkte"] as? JsonArray)?.mapNotNull { p ->
@@ -260,8 +272,18 @@ fun fotosLesen(e: JsonElement?): List<Foto> = (e as? JsonArray)?.mapNotNull { f 
     val o = f as? JsonObject ?: return@mapNotNull null
     val id = (o["id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
     Foto(id, o["url"].text() ?: "/api/laeufe/fotos/$id", o["vorschau"].text() ?: "/api/laeufe/fotos/$id?klein=1",
-        (o["breite"] as? JsonPrimitive)?.intOrNull ?: 0, (o["hoehe"] as? JsonPrimitive)?.intOrNull ?: 0)
+        (o["breite"] as? JsonPrimitive)?.intOrNull ?: 0, (o["hoehe"] as? JsonPrimitive)?.intOrNull ?: 0,
+        lat = (o["lat"] as? JsonPrimitive)?.doubleOrNull, lon = (o["lon"] as? JsonPrimitive)?.doubleOrNull,
+        km = (o["km"] as? JsonPrimitive)?.doubleOrNull, ortText = o["ort_text"].text() ?: "",
+        mini = punktLesen(o["mini"]))
 } ?: emptyList()
+
+private fun punktLesen(e: JsonElement?): Pair<Float, Float>? {
+    val a = e as? JsonArray ?: return null
+    val x = (a.getOrNull(0) as? JsonPrimitive)?.floatOrNull
+    val y = (a.getOrNull(1) as? JsonPrimitive)?.floatOrNull
+    return if (x != null && y != null) x to y else null
+}
 
 fun mitgliedLesen(obj: JsonObject): Mitglied {
     val letzter = obj["letzter_lauf"] as? JsonObject
@@ -574,12 +596,13 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
     }
 
     /** REQ-013: Foto (fertiges JPEG) an einen eigenen Lauf hängen. Antwort: der Lauf mit allen Fotos. */
-    suspend fun fotoHochladen(laufId: Long, jpeg: ByteArray): Antwort<LaufAnzeige> = sicher {
+    suspend fun fotoHochladen(laufId: Long, foto: FotoDaten): Antwort<LaufAnzeige> = sicher {
         val (text, code) = client.submitFormWithBinaryData(
             url = "$basis/api/laeufe/$laufId/fotos",
             block = { anmelden() },
             formData = formData {
-                append("foto", jpeg, Headers.build {
+                foto.aufgenommen?.let { append("aufgenommen", it) }
+                append("foto", foto.jpeg, Headers.build {
                     append(HttpHeaders.ContentType, "image/jpeg")
                     append(HttpHeaders.ContentDisposition, "filename=\"foto.jpg\"")
                 })
@@ -722,7 +745,7 @@ interface Plattform {
     fun kopieren(text: String)
     /** REQ-013: Foto mit der Kamera (Frontkamera vorgewählt) oder aus der Galerie – fertig verkleinert als JPEG
      *  (höchstens 1280 px, richtig gedreht, ohne Standort). null = abgebrochen. */
-    suspend fun fotoAufnehmen(kamera: Boolean): ByteArray?
+    suspend fun fotoAufnehmen(kamera: Boolean): FotoDaten?
     /** Bilddaten (JPEG) für die Anzeige. */
     fun bildAnzeigen(daten: ByteArray): androidx.compose.ui.graphics.ImageBitmap?
 }

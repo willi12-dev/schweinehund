@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.9.0 (in Entwicklung)
+- REQ-014 Fotos auf der Strecke: Jedes Foto sitzt als rundes Mini-Bild an der Stelle der Strecke, an der es
+  aufgenommen wurde (nach Aufnahmezeit; vor dem Start → Start, danach oder ohne Zeit → Ziel). Antippen → Vollbild
+  mit „bei km 3,9 · 10:47“. Fotos an fast derselben Stelle rücken nebeneinander.
+- Lauf-Liste: kleine Streckenzeichnung mit den Fotos an ihrer Stelle.
+- Kommt die Strecke später dazu (GPX nachgeteilt), rutschen die Fotos an die richtige Stelle.
+- Datenbank-Änderung 12: Aufnahmezeit und Stelle an Fotos; vorhandene Fotos kommen ans Ziel.
+
 ## v0.8.0 (12.11.2026)
 - REQ-013 Lauf-Fotos: bis zu drei Fotos pro Lauf – Selfie mit der Kamera (Frontkamera vorgewählt) oder aus der
   Galerie, in der Detailansicht oder gleich auf der Kontrollkarte beim Teilen. Fotos groß über der Karte, Vollbild

@@ -124,9 +124,16 @@ class AndroidPlattform(
         }
 
     // ------------------------------------------------------------------ REQ-013: Fotos zum Lauf
-    override suspend fun fotoAufnehmen(kamera: Boolean): ByteArray? {
+    override suspend fun fotoAufnehmen(kamera: Boolean): FotoDaten? {
         val uri = bildHolen(kamera) ?: return null
-        return withContext(Dispatchers.IO) { runCatching { fotoVerkleinern(context, uri) }.getOrNull() }
+        val jetzt = java.time.OffsetDateTime.now().withNano(0).toString()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val jpeg = fotoVerkleinern(context, uri) ?: return@runCatching null
+                // REQ-014: Aufnahmezeit vor dem Entfernen der Zusatzdaten merken; frische Kamera-Aufnahme = jetzt
+                FotoDaten(jpeg, aufnahmezeit(context, uri) ?: if (kamera) jetzt else null)
+            }.getOrNull()
+        }
     }
 
     override fun bildAnzeigen(daten: ByteArray): androidx.compose.ui.graphics.ImageBitmap? =
@@ -234,3 +241,17 @@ fun fotoVerkleinern(context: Context, uri: Uri, maxSeite: Int = 1280): ByteArray
         aus.toByteArray()
     }
 }
+
+/** REQ-014: Aufnahmezeit aus den EXIF-Daten als ISO-Text (mit Zeitzone, falls im Bild; sonst die des Handys). */
+fun aufnahmezeit(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.openInputStream(uri)?.use { strom ->
+        val exif = ExifInterface(strom)
+        val text = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+            ?: return@use null
+        val lokal = java.time.LocalDateTime.parse(text.trim(), java.time.format.DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"))
+        val versatz = exif.getAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL)
+            ?.let { runCatching { java.time.ZoneOffset.of(it.trim()) }.getOrNull() }
+        if (versatz != null) lokal.atOffset(versatz).toString()
+        else lokal.atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime().toString()
+    }
+}.getOrNull()

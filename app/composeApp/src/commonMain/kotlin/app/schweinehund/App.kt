@@ -274,10 +274,10 @@ fun App(
                     fotoHinzufuegen = { kamera ->
                         scope.launch {
                             val id = offen.id ?: return@launch
-                            val jpeg = plattform.fotoAufnehmen(kamera) ?: return@launch
+                            val foto = plattform.fotoAufnehmen(kamera) ?: return@launch
                             beschaeftigt = true
                             meldung = ""
-                            pruefen(server.fotoHochladen(id, jpeg))?.let { detail = it }
+                            pruefen(server.fotoHochladen(id, foto))?.let { detail = it }
                             beschaeftigt = false
                             neuLaden()
                         }
@@ -630,7 +630,10 @@ private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -
             if (lauf.kommentareAnzahl > 0) "   💬 ${lauf.kommentareAnzahl}" else ""
         if (echo.isNotBlank()) Text(echo.trim(), fontSize = 14.sp, color = Farben.Tinte)
     }
-    if (lauf.fotos.isNotEmpty()) {
+    if (lauf.mini.size >= 2) {
+        Spacer(Modifier.size(10.dp))
+        MiniStrecke(lauf.mini, lauf.fotos)          // REQ-014: Fotos an ihrer Stelle auf der Strecke
+    } else if (lauf.fotos.isNotEmpty()) {
         Spacer(Modifier.size(10.dp))
         FotoVorschauen(lauf.fotos)
     }
@@ -642,11 +645,11 @@ private fun Kontrollkarte(
     eintrag: Wartend,
     appVersion: String,
     beschaeftigt: Boolean,
-    fotoAufnehmen: suspend (Boolean) -> ByteArray?,
-    speichern: (Vorschau, List<ByteArray>) -> Unit,
+    fotoAufnehmen: suspend (Boolean) -> FotoDaten?,
+    speichern: (Vorschau, List<FotoDaten>) -> Unit,
     verwerfen: () -> Unit,
 ) {
-    var fotos by remember(eintrag) { mutableStateOf<List<ByteArray>>(emptyList()) }
+    var fotos by remember(eintrag) { mutableStateOf<List<FotoDaten>>(emptyList()) }
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize().background(Farben.Schleier).clickable(enabled = false) {}, contentAlignment = Alignment.BottomCenter) {
         Column(
@@ -730,7 +733,7 @@ private fun LaufDetail(
         val karte = lauf.karte
         when {
             karte != null && karte.punkte.size >= 2 -> {
-                LaufKarte(karte, Modifier.fillMaxWidth().height(340.dp).clip(RoundedCornerShape(22.dp)))
+                LaufKarte(karte, lauf.fotos, fotoOeffnen, Modifier.fillMaxWidth().height(340.dp).clip(RoundedCornerShape(22.dp)))
                 TempoLegende()
             }
             lauf.linie.size >= 2 ->

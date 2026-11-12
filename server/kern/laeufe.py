@@ -118,6 +118,9 @@ def speichern(con, wem, lauf, quelle):
         if lauf.get(k) is not None:
             felder[k] = lauf[k]
     con.execute(f"UPDATE laeufe SET {', '.join(f'{k} = ?' for k in felder)} WHERE id = ?", (*felder.values(), alt["id"]))
+    if "punkte" in felder or "start" in felder:
+        from kern import fotos
+        fotos.positionen(con, alt["id"])        # REQ-014: Strecke kam (neu) dazu → Fotos neu auf die Strecke setzen
     return alt["id"], False
 
 
@@ -210,6 +213,7 @@ def _fuer(z, ich_id, detail):
     d = fuer_app(z, z["quellen"].split(","), mit_linie=detail, lauf_id=z["id"])
     d.update(eigen=z["mitglied_id"] == ich_id,
              mitglied={"id": z["mitglied_id"], "name": z["m_name"], "farbe": z["m_farbe"], "kuerzel": z["m_kuerzel"]})
+    d["_punkte"] = z["punkte"] if d["hat_strecke"] else ""
     if detail and d["hat_strecke"]:
         punkte = [tuple(p) for p in json.loads(z["punkte"])]
         d["karte"] = dateien.karte(punkte, z.get("distanz_m"))
@@ -228,6 +232,15 @@ def _mit_reaktionen(con, liste, ich_id):
         l["reaktionen"] = r.get(l["id"], [])
         l["kommentare_anzahl"] = k.get(l["id"], 0)
         l["fotos"] = f.get(l["id"], [])
+        roh = l.pop("_punkte", "")
+        if roh:
+            # REQ-014: kleine Streckenzeichnung für die Lauf-Liste, Fotos an ihrer Stelle im selben Maßstab
+            punkte = json.loads(roh)
+            orte = [(foto["lat"], foto["lon"]) if foto["lat"] is not None else None for foto in l["fotos"]]
+            mini, xy = dateien.linie(punkte, 120, orte)
+            l["mini"] = mini
+            for foto, ort in zip(l["fotos"], xy):
+                foto["mini"] = ort
     return liste
 
 

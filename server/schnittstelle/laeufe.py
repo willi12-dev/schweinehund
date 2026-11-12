@@ -112,11 +112,11 @@ _STAND = {"fehlt": ("Lauf nicht gefunden.", 404), "fremd": ("Das ist nicht dein 
 @bp.post("/<int:lauf_id>/fotos")
 @angemeldet_noetig
 def foto_hochladen(lauf_id):
-    """Formularfeld „foto“. Antwort: der Lauf mit allen Fotos."""
+    """Formularfeld „foto“, dazu „aufgenommen“ (ISO, REQ-014). Antwort: der Lauf mit allen Fotos."""
     datei = request.files.get("foto")
     con = datenbank.db()
     try:
-        fotos.hochladen(con, g.ich, lauf_id, datei.read() if datei else b"")
+        fotos.hochladen(con, g.ich, lauf_id, datei.read() if datei else b"", request.form.get("aufgenommen"))
     except fotos.FotoFehler as e:
         return _fehler(str(e), e.code)
     datenbank.protokoll(con, "Foto hochgeladen", f"Lauf {lauf_id}")

@@ -119,6 +119,17 @@ def _schritt_11(con):
                     (HORST_ALLES_SICHTBAR, datetime.now(timezone.utc).isoformat(timespec="seconds")))
 
 
+def _schritt_12(con):
+    """v0.9.0 (REQ-014): Aufnahmezeit und Stelle auf der Strecke an Fotos; vorhandene Fotos kommen ans Ziel."""
+    spalten = {z[1] for z in con.execute("PRAGMA table_info(fotos)")}
+    for name, art in (("aufgenommen", "TEXT"), ("lat", "REAL"), ("lon", "REAL"), ("km", "REAL")):
+        if name not in spalten:
+            con.execute(f"ALTER TABLE fotos ADD COLUMN {name} {art}")
+    from kern import fotos
+    for z in con.execute("SELECT DISTINCT lauf_id FROM fotos").fetchall():
+        fotos.positionen(con, z["lauf_id"])
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -135,6 +146,7 @@ SCHRITTE = [
     (9, "v0.6.0: Sonntagsshow (REQ-005)", _schritt_9),
     (10, "v0.7.0: Chat, Reaktionen, Kommentare (REQ-006)", _schritt_10),
     (11, "v0.8.0: Fotos zum Lauf, alle Läufe sichtbar (REQ-013)", _schritt_11),
+    (12, "v0.9.0: Fotos auf der Strecke (REQ-014)", _schritt_12),
 ]
 STAND = SCHRITTE[-1][0]
 
