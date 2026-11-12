@@ -1,4 +1,5 @@
 """REQ-002: Familie gründen, Mitglieder einladen, Anmeldung per Schlüssel."""
+import os
 from datetime import datetime, timedelta
 
 from hilfen import angemeldeter_server, neuer_server
@@ -163,3 +164,20 @@ def test_bremse_beim_raten_von_codes():
     geraete._versuche.clear()
     codes = [c.application.test_client().post(f"/api/einladung/RATEN{i:05d}", json={}).status_code for i in range(21)]
     assert codes[:20] == [404] * 20 and codes[20] == 429
+
+
+def test_notausgang_verwalter_code():
+    """Verwalter hat die App gelöscht: Server-Konsole erzeugt einen Code, damit kommt er mit allen Daten wieder rein."""
+    from kern import familie
+    from kern.datenbank import verbinden
+    _, c, ordner = angemeldeter_server()
+    alt = c.get("/api/familie").get_json()["ich"]["id"]
+    con = verbinden(os.path.join(ordner, "test.db"))
+    name, code = familie.verwalter_code(con)
+    con.commit()
+    assert name == "Testläufer A"
+    assert c.get("/api/familie").status_code == 401                       # altes Handy abgemeldet
+    neu = c.application.test_client()
+    r = neu.post(f"/api/einladung/{code}", json={"geraet_id": "geraet-test-0009"}).get_json()
+    assert r["ich"]["id"] == alt and r["ich"]["rolle"] == "verwalter"
+    assert neu.post(f"/api/einladung/{code}", json={"geraet_id": "geraet-test-0010"}).status_code == 404

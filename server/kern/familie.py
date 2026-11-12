@@ -112,6 +112,19 @@ def einladen(con, verwalter, mitglied_id):
         raise FamilienFehler("Dieses Familienmitglied gibt es nicht.", 404)
     if mitglied_id == verwalter["id"]:
         raise FamilienFehler("Einen neuen Link für dich selbst erzeugt ein zweiter Verwalter.", 409)
+    return _code_fuer(con, mitglied_id)
+
+
+def verwalter_code(con):
+    """Notausgang, wenn der Verwalter selbst nicht mehr reinkommt (App gelöscht, neues Handy): neuer Code für ihn.
+    Nur über die Konsole auf dem Server erreichbar (server/verwalter_code.py), nicht über die Schnittstelle."""
+    z = con.execute("SELECT id, name FROM mitglieder WHERE rolle = 'verwalter' ORDER BY id LIMIT 1").fetchone()
+    if z is None:
+        raise FamilienFehler("Es gibt noch keine Familie.", 404)
+    return z["name"], _code_fuer(con, z["id"])
+
+
+def _code_fuer(con, mitglied_id):
     con.execute("DELETE FROM einladungen WHERE mitglied_id = ?", (mitglied_id,))
     con.execute("UPDATE mitglieder SET schluessel = NULL WHERE id = ?", (mitglied_id,))
     code = "".join(secrets.choice(CODE_ZEICHEN) for _ in range(CODE_LAENGE))

@@ -7,6 +7,7 @@
 - Lauf-Liste: kleine Streckenzeichnung mit den Fotos an ihrer Stelle.
 - Kommt die Strecke später dazu (GPX nachgeteilt), rutschen die Fotos an die richtige Stelle.
 - Datenbank-Änderung 12: Aufnahmezeit und Stelle an Fotos; vorhandene Fotos kommen ans Ziel.
+- Notausgang für den Verwalter: `verwalter_code.py` in der Server-Konsole erzeugt einen neuen Code für ihn selbst.
 
 ## v0.8.0 (12.11.2026)
 - REQ-013 Lauf-Fotos: bis zu drei Fotos pro Lauf – Selfie mit der Kamera (Frontkamera vorgewählt) oder aus der

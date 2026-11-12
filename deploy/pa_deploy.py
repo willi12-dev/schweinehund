@@ -29,7 +29,7 @@ PY_VERSIONS = ["python313", "python312", "python311", "python310"]
 
 def dateien():
     """Alles, was der Server braucht – relativ zu server/."""
-    liste = ["app.py", "schema.sql", "aufgabe_sonntagsshow.py"]
+    liste = ["app.py", "schema.sql", "aufgabe_sonntagsshow.py", "verwalter_code.py"]
     for ordner in ("kern", "schnittstelle"):
         liste += [str(p.relative_to(SERVER)) for p in sorted((SERVER / ordner).glob("*.py"))]
     return liste
