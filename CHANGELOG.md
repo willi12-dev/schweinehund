@@ -1,6 +1,6 @@
 # Änderungen
 
-## v0.8.0 (in Entwicklung)
+## v0.8.0 (12.11.2026)
 - REQ-013 Lauf-Fotos: bis zu drei Fotos pro Lauf – Selfie mit der Kamera (Frontkamera vorgewählt) oder aus der
   Galerie, in der Detailansicht oder gleich auf der Kontrollkarte beim Teilen. Fotos groß über der Karte, Vollbild
   mit Zoom, runde Vorschaubilder in der Lauf-Liste. Horst meldet das erste Foto im Chat.

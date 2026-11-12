@@ -15,6 +15,6 @@
 | REQ-010 | Familien-Werkstatt: Wünsche, Abstimmung, Sprüche und Preise als Daten | geplant | v0.12.0 |
 | REQ-011 | Automatik-Weg: Health Sync (optional, falls Teilen im Alltag nervt) | geplant | – |
 | REQ-012 | iPhone-Version mit Apple Health | geplant | – |
-| REQ-013 | Lauf-Fotos: bis zu drei Bilder pro Lauf, alle sehen alles („nur für mich“ entfällt) | in Entwicklung | v0.8.0 |
+| REQ-013 | Lauf-Fotos: bis zu drei Bilder pro Lauf, alle sehen alles („nur für mich“ entfällt) | umgesetzt | v0.8.0 |
 
 Reihenfolge ab REQ-005 kann der Familienrat ändern.
