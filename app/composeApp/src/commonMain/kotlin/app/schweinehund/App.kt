@@ -34,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,6 +105,11 @@ fun App(
     }
     var schluessel by remember {
         mutableStateOf(plattform.lesen("schluessel")?.takeIf { it.isNotBlank() }.also { server.schluessel = it; server.geraet = geraetId })
+    }
+    // Sicherheitsnetz: Die Server-Verbindung trägt immer den aktuellen Schlüssel – auch falls sie neu entstanden ist.
+    SideEffect {
+        if (server.schluessel != schluessel) server.schluessel = schluessel
+        if (server.geraet != geraetId) server.geraet = geraetId
     }
     var zustand by remember { mutableStateOf<ServerZustand>(ServerZustand.Laedt) }
     var familie by remember { mutableStateOf<Familienstand?>(null) }

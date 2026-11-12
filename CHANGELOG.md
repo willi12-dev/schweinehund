@@ -9,6 +9,9 @@
 - Datenbank-Änderung 12: Aufnahmezeit und Stelle an Fotos; vorhandene Fotos kommen ans Ziel.
 - Fehler behoben: Nach dem Anmelden zeigte die App beim Teilen aus WhatsApp wieder „Willkommen“ (zweites App-Fenster
   mit altem Stand). Jetzt gibt es nur noch ein App-Fenster, und die App liest den Schlüssel beim Zurückkehren neu.
+- Fehler behoben: „Nach ein paar Klicks abgemeldet“ – die App baute ihre Server-Verbindung bei jeder Auffrischung
+  (Teilen, Link, Push, Rückkehr in die App) neu, ohne Schlüssel. Jetzt gibt es genau eine Verbindung.
+- Fehlersuche: Server protokolliert Abweisungen (401), `diagnose.py` zeigt Mitglieder und Protokoll.
 - Notausgang für den Verwalter: `verwalter_code.py` in der Server-Konsole erzeugt einen neuen Code für ihn selbst.
 
 ## v0.8.0 (12.11.2026)

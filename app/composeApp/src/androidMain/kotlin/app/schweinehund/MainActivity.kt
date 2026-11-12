@@ -82,9 +82,12 @@ class MainActivity : ComponentActivity() {
             bildHolen = { mitKamera -> bildHolen(mitKamera).await() },
         )
         plattform.aktivitaet = this
+        // Genau EINE Verbindung zum Server, außerhalb von setContent: Innerhalb entstand bei jeder Auffrischung
+        // (Teilen, Link, Push, Rückkehr in die App) eine neue ohne Schlüssel → Abweisung → abgemeldet (12.11.2026).
+        val server = ServerDienst(BuildConfig.SERVER_URL)
         setContent {
             App(
-                server = ServerDienst(BuildConfig.SERVER_URL),
+                server = server,
                 plattform = plattform,
                 appVersion = "${BuildConfig.VERSION_NAME} · Bau ${BuildConfig.BAU}",
                 geteilt = geteilt.value,
