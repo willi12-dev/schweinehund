@@ -96,6 +96,7 @@ fun App(
     einladungErledigt: () -> Unit = {},
     pushZiel: String? = null,
     pushZielErledigt: () -> Unit = {},
+    aufgeweckt: Int = 0,
 ) {
     val geraetId = remember {
         plattform.lesen("geraet_id") ?: ("g-" + (1..24).map { "0123456789abcdef"[Random.nextInt(16)] }.joinToString(""))
@@ -175,6 +176,17 @@ fun App(
     LaunchedEffect(Unit) {
         zustand = server.status()
         if (zustand is ServerZustand.Erreichbar) neuLaden()
+    }
+
+    // Schlüssel neu lesen, wenn die App wieder nach vorn kommt: Wurde inzwischen (z. B. in einem anderen Fenster der
+    // App) angemeldet, steht hier sonst noch „nicht angemeldet“ – Fehler vom 12.11.2026.
+    LaunchedEffect(aufgeweckt) {
+        if (schluessel != null) return@LaunchedEffect
+        val gespeichert = plattform.lesen("schluessel")?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        server.schluessel = gespeichert
+        schluessel = gespeichert
+        meldung = ""
+        neuLaden()
     }
 
     // REQ-006: Bei offenem Chat alle 5 Sekunden nach neuen Nachrichten fragen (keine Dauerverbindung im kostenlosen Tarif)

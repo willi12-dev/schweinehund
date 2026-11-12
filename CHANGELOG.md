@@ -7,6 +7,8 @@
 - Lauf-Liste: kleine Streckenzeichnung mit den Fotos an ihrer Stelle.
 - Kommt die Strecke später dazu (GPX nachgeteilt), rutschen die Fotos an die richtige Stelle.
 - Datenbank-Änderung 12: Aufnahmezeit und Stelle an Fotos; vorhandene Fotos kommen ans Ziel.
+- Fehler behoben: Nach dem Anmelden zeigte die App beim Teilen aus WhatsApp wieder „Willkommen“ (zweites App-Fenster
+  mit altem Stand). Jetzt gibt es nur noch ein App-Fenster, und die App liest den Schlüssel beim Zurückkehren neu.
 - Notausgang für den Verwalter: `verwalter_code.py` in der Server-Konsole erzeugt einen neuen Code für ihn selbst.
 
 ## v0.8.0 (12.11.2026)

@@ -56,6 +56,9 @@ class MainActivity : ComponentActivity() {
     /** Einladungscode aus einem angetippten Link (https://…/e/CODE). */
     private val einladung = mutableStateOf<String?>(null)
 
+    /** Zählt hoch, sobald die App (wieder) im Vordergrund ist – die App liest dann den Schlüssel neu. */
+    private val aufgeweckt = mutableStateOf(0)
+
     /** Ziel aus einer angetippten Push-Nachricht (REQ-006): chat, rangliste oder lauf:<id>. */
     private val pushZiel = mutableStateOf<String?>(null)
 
@@ -90,8 +93,14 @@ class MainActivity : ComponentActivity() {
                 einladungErledigt = { einladung.value = null },
                 pushZiel = pushZiel.value,
                 pushZielErledigt = { pushZiel.value = null },
+                aufgeweckt = aufgeweckt.value,
             )
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        aufgeweckt.value += 1
     }
 
     override fun onNewIntent(intent: Intent) {
