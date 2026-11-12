@@ -459,8 +459,12 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
     /** Geheimer Schlüssel dieses Handys (nach Gründen oder Einladung); geht bei jeder Anfrage mit. */
     var schluessel: String? = null
 
+    /** Kennung dieses Handys – geht zur Fehlersuche mit (Server-Protokoll bei Abweisungen). */
+    var geraet: String = ""
+
     private fun HttpRequestBuilder.anmelden() {
         schluessel?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+        if (geraet.isNotBlank()) header("X-Geraet", geraet)
     }
 
     private fun json(builder: HttpRequestBuilder, inhalt: JsonObject) {

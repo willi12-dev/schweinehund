@@ -103,7 +103,7 @@ fun App(
             .also { plattform.schreiben("geraet_id", it) }
     }
     var schluessel by remember {
-        mutableStateOf(plattform.lesen("schluessel")?.takeIf { it.isNotBlank() }.also { server.schluessel = it })
+        mutableStateOf(plattform.lesen("schluessel")?.takeIf { it.isNotBlank() }.also { server.schluessel = it; server.geraet = geraetId })
     }
     var zustand by remember { mutableStateOf<ServerZustand>(ServerZustand.Laedt) }
     var familie by remember { mutableStateOf<Familienstand?>(null) }
@@ -141,8 +141,22 @@ fun App(
         meldung = grund
     }
 
+    var nachpruefen by remember { mutableStateOf(false) }
+
+    /** Ein 401 meldet erst ab, wenn eine frische Nachfrage mit dem aktuellen Schlüssel ebenfalls abgewiesen wird –
+     *  so wirft eine verspätete Antwort auf eine alte Anfrage niemanden mehr raus (Fehlersuche 12.11.2026). */
+    fun vielleichtAbmelden(grund: String) {
+        if (nachpruefen || schluessel == null) return
+        nachpruefen = true
+        scope.launch {
+            val probe = server.familie()
+            nachpruefen = false
+            if (probe.abgemeldet) abmelden(grund)
+        }
+    }
+
     fun <T> pruefen(a: Antwort<T>): T? {
-        if (a.abgemeldet) abmelden(a.fehler ?: "Bitte neu anmelden.")
+        if (a.abgemeldet) vielleichtAbmelden(a.fehler ?: "Bitte neu anmelden.")
         else if (a.wert == null && a.fehler != null) meldung = a.fehler
         return a.wert
     }
@@ -245,7 +259,7 @@ fun App(
                     val text = plattform.texterkennung(datei)
                     if (text.isNullOrBlank()) Antwort(null, "Auf dem Bild wurde kein Text erkannt.") else server.vorschauText(text)
                 } else server.vorschauDatei(datei)
-                if (antwort.abgemeldet) { abmelden(antwort.fehler ?: ""); break }
+                if (antwort.abgemeldet) { vielleichtAbmelden(antwort.fehler ?: ""); break }
                 warteschlange = warteschlange + Wartend(antwort.wert, antwort.fehler, datei.name)
             }
             meldung = ""

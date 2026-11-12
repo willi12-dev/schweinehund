@@ -37,10 +37,31 @@ def angemeldet_noetig(fn):
     def huelle(*args, **kwargs):
         ich = familie.angemeldet(datenbank.db(), schluessel_aus_anfrage())
         if ich is None:
+            _abweisung_merken()
             return fehler("Nicht angemeldet – bitte den Einladungslink öffnen.", 401)
         g.ich = ich
         return fn(*args, **kwargs)
     return huelle
+
+
+_abweisungen = []   # Zeitstempel (ein Prozess auf PA) – höchstens 60 Einträge pro Stunde ins Protokoll
+
+
+def _abweisung_merken():
+    """Fehlersuche 12.11.2026: Jede Abweisung (401) mit Pfad, Gerät und Schlüssel-Kennung ins Protokoll –
+    so sieht man, ob ein alter Schlüssel, gar keiner oder ein unbekannter kam. Kennung = Anfang der Prüfsumme."""
+    import time
+    jetzt = time.time()
+    _abweisungen[:] = [t for t in _abweisungen if t > jetzt - 3600]
+    if len(_abweisungen) >= 60:
+        return
+    _abweisungen.append(jetzt)
+    s = schluessel_aus_anfrage()
+    kennung = familie.pruefsumme(s)[:8] if s else "ohne"
+    geraet = request.headers.get("X-Geraet", "")[:12]
+    con = datenbank.db()
+    datenbank.protokoll(con, "Abgewiesen (401)", f"{request.method} {request.path} · Schlüssel {kennung} · {geraet}")
+    con.commit()
 
 
 def _familienfehler(fn):
@@ -91,7 +112,7 @@ def einladung_einloesen(code):
         return fehler("Zu viele Versuche – bitte in ein paar Minuten noch einmal.", 429)
     con = datenbank.db()
     ich, schluessel = familie.einloesen(con, code, _geraet(_daten()))
-    datenbank.protokoll(con, "Einladung eingelöst", ich["name"])
+    datenbank.protokoll(con, "Einladung eingelöst", f"{ich['name']} · Schlüssel {familie.pruefsumme(schluessel)[:8]}")
     con.commit()
     return jsonify(ok=True, schluessel=schluessel, ich=familie.fuer_app(ich))
 

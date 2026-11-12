@@ -181,3 +181,17 @@ def test_notausgang_verwalter_code():
     r = neu.post(f"/api/einladung/{code}", json={"geraet_id": "geraet-test-0009"}).get_json()
     assert r["ich"]["id"] == alt and r["ich"]["rolle"] == "verwalter"
     assert neu.post(f"/api/einladung/{code}", json={"geraet_id": "geraet-test-0010"}).status_code == 404
+
+
+def test_abweisung_landet_im_protokoll():
+    """Fehlersuche 12.11.2026: 401 mit Pfad, Schlüssel-Kennung und Gerät im Protokoll; Diagnose-Skript läuft."""
+    _, c, ordner = angemeldeter_server()
+    fremd = c.application.test_client()
+    assert fremd.get("/api/laeufe", headers={"Authorization": "Bearer alt", "X-Geraet": "g-test-1234"}).status_code == 401
+    assert fremd.get("/api/chat").status_code == 401
+    con = verbinden(os.path.join(ordner, "test.db"))
+    zeilen = [z["details"] for z in con.execute("SELECT details FROM protokoll WHERE ereignis = 'Abgewiesen (401)'")]
+    assert zeilen[0].startswith("GET /api/laeufe · Schlüssel ") and zeilen[0].endswith("g-test-1234")
+    assert "Schlüssel ohne" in zeilen[1]
+    eingeloest = con.execute("SELECT details FROM protokoll WHERE ereignis = 'Einladung eingelöst'").fetchall()
+    assert all("Schlüssel " in z["details"] for z in eingeloest)
