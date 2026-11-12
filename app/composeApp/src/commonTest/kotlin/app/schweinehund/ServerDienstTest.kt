@@ -123,6 +123,19 @@ class ServerDienstTest {
     }
 
     @Test
+    fun fotosAmLaufLesen() {
+        val json = """{"id": 7, "start_text": "Mo 01.06. 06:13", "distanz_km": "4,93", "fotos": [
+            {"id": 3, "url": "/api/laeufe/fotos/3", "vorschau": "/api/laeufe/fotos/3?klein=1", "breite": 960, "hoehe": 1280},
+            {"id": 4, "breite": 1280, "hoehe": 960}]}"""
+        val l = laufLesen(kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject)
+        assertEquals(listOf(3L, 4L), l.fotos.map { it.id })
+        assertEquals("/api/laeufe/fotos/3?klein=1", l.fotos[0].vorschau)
+        assertEquals("/api/laeufe/fotos/4", l.fotos[1].url)
+        assertEquals(960, l.fotos[0].breite)
+        assertTrue(laufLesen(kotlinx.serialization.json.Json.parseToJsonElement("""{"id": 1}""").jsonObject).fotos.isEmpty())
+    }
+
+    @Test
     fun punktestandLesen() {
         val json = """{"ok": true,
           "rangliste": {"zeitraum": "woche", "titel": "KW 46 · 09.11. – 15.11.", "zeilen": [

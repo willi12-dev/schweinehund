@@ -12,6 +12,10 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- REQ-013: Kamera-App für das Selfie finden -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -60,6 +64,17 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <!-- REQ-013: Ablage für Kamera-Aufnahmen (nur im App-Zwischenspeicher, wird beim nächsten Foto geleert) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fotos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/foto_pfade" />
+        </provider>
 
         <service
             android:name=".PushEmpfang"

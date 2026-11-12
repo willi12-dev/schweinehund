@@ -12,7 +12,9 @@ import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.health.connect.client.PermissionController
 
@@ -22,6 +24,30 @@ class MainActivity : ComponentActivity() {
     private val hcWarten = Warten<Set<String>>()
     private val hcErlaubnis = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { rechte ->
         hcWarten.fertig(rechte)
+    }
+
+    // REQ-013: Fotos zum Lauf – Kamera (Frontkamera vorgewählt) oder Bildauswahl (ohne Speicher-Erlaubnis)
+    private val fotoWarten = Warten<Uri?>()
+    private var kameraZiel: Uri? = null
+    private val kamera = registerForActivityResult(SelfieAufnahme()) { ok -> fotoWarten.fertig(if (ok) kameraZiel else null) }
+    private val galerie = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> fotoWarten.fertig(uri) }
+
+    private fun bildHolen(mitKamera: Boolean): kotlinx.coroutines.CompletableDeferred<Uri?> {
+        val warten = fotoWarten.neu()
+        try {
+            if (mitKamera) {
+                val ordner = java.io.File(cacheDir, "fotos").apply { mkdirs() }
+                ordner.listFiles()?.forEach { it.delete() }          // alte Aufnahmen weg – sie sind längst hochgeladen
+                val datei = java.io.File(ordner, "aufnahme_${System.currentTimeMillis()}.jpg")
+                kameraZiel = FileProvider.getUriForFile(this, "$packageName.fotos", datei)
+                kamera.launch(kameraZiel!!)
+            } else {
+                galerie.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        } catch (e: Exception) {
+            fotoWarten.fertig(null)                                 // z. B. keine Kamera-App vorhanden
+        }
+        return warten
     }
 
     /** Dateien, die gerade über „Teilen“ hereinkamen – die App verarbeitet und leert die Liste. */
@@ -43,11 +69,15 @@ class MainActivity : ComponentActivity() {
             benachrichtigungErlaubnis.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         uebernehmen(intent)
-        val plattform = AndroidPlattform(applicationContext) { rechte ->
-            val warten = hcWarten.neu()
-            hcErlaubnis.launch(rechte)
-            warten.await()
-        }
+        val plattform = AndroidPlattform(
+            applicationContext,
+            rechteAnfragen = { rechte ->
+                val warten = hcWarten.neu()
+                hcErlaubnis.launch(rechte)
+                warten.await()
+            },
+            bildHolen = { mitKamera -> bildHolen(mitKamera).await() },
+        )
         plattform.aktivitaet = this
         setContent {
             App(
@@ -118,4 +148,15 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val KANAL_FAMILIE = "familie"
     }
+}
+
+/** Kamera-Aufnahme mit der Bitte, die Frontkamera zu nehmen (Selfie). Nicht jede Kamera-App hält sich daran –
+ *  dann lässt sich in der Kamera umschalten. */
+class SelfieAufnahme : ActivityResultContracts.TakePicture() {
+    override fun createIntent(context: android.content.Context, input: Uri): Intent =
+        super.createIntent(context, input).apply {
+            putExtra("android.intent.extras.CAMERA_FACING", 1)
+            putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+            putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+        }
 }

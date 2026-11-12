@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.8.0 (in Entwicklung)
+- REQ-013 Lauf-Fotos: bis zu drei Fotos pro Lauf – Selfie mit der Kamera (Frontkamera vorgewählt) oder aus der
+  Galerie, in der Detailansicht oder gleich auf der Kontrollkarte beim Teilen. Fotos groß über der Karte, Vollbild
+  mit Zoom, runde Vorschaubilder in der Lauf-Liste. Horst meldet das erste Foto im Chat.
+- Fotos werden verkleinert (1280 px) und ohne Standortdaten gespeichert; Lauf löschen löscht seine Fotos.
+- „Nur für mich“ entfällt: Die Familie sieht alle Strecken (auch bisher private).
+- Deploy sichert die Fotos zusammen mit der Datenbank. Datenbank-Änderung 11: Fotos, alles sichtbar.
+
 ## v0.7.0 (11.11.2026)
 - REQ-006: Familienchat als fünfter Bereich (mit Zahl ungelesener Nachrichten), Reaktionen 👏🔥💪😂🐷 und
   Kommentare an jedem Lauf, Horst meldet neue Läufe, Bestwerte und Überholen im Chat.

@@ -6,7 +6,7 @@ Benötigte Umgebungsvariablen (aus den GitHub-Secrets):
 Optional: FIREBASE_KONTO (Dienstkonto-JSON für Push), GIT_SHA, BACKUP_DIR, UMGEBUNG (Standard TEST)
 
 Ablauf:
-  1. Datenbank sichern (falls vorhanden) – der Workflow legt sie 30 Tage als Artefakt ab
+  1. Datenbank und Fotos sichern (falls vorhanden) – der Workflow legt sie 30 Tage als Artefakt ab
   2. Server-Dateien, VERSION, .env und (falls vorhanden) das Firebase-Dienstkonto hochladen
   3. Web-App anlegen (nur beim ersten Mal), WSGI-Datei, HTTPS
   4. Web-App neu laden
@@ -84,6 +84,16 @@ def main():
         print(f"  Datenbank gesichert: {ziel.name} ({len(r.content)} Bytes)")
     else:
         print("  Noch keine Datenbank vorhanden (Erstinstallation).")
+    # 1b. Fotos zum Lauf (REQ-013) mitsichern – nur die großen Bilder, Vorschaubilder lassen sich daraus neu rechnen
+    r = call("GET", f"files/tree/?path={appdir}/fotos/", expect=None)
+    if r.status_code == 200:
+        fotos = [p for p in r.json() if p.endswith(".jpg") and not p.endswith("_klein.jpg")]
+        (backup / "fotos").mkdir(exist_ok=True)
+        for p in fotos:
+            f = call("GET", f"files/path{p}", expect=None)
+            if f.status_code == 200:
+                (backup / "fotos" / p.rsplit("/", 1)[-1]).write_bytes(f.content)
+        print(f"  Fotos gesichert: {len(fotos)}")
 
     # 2. Dateien hochladen
     for rel in dateien():

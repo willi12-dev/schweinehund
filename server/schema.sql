@@ -109,3 +109,17 @@ CREATE TABLE IF NOT EXISTS kommentare (
     text        TEXT NOT NULL,
     zeit        TEXT NOT NULL
 );
+
+-- REQ-013: „nur für mich“ entfällt – die beiden Spalten dazu oben stehen seitdem immer auf 'familie'.
+-- REQ-013: Fotos zum Lauf (bis zu drei). Die Bilder liegen im Ordner fotos/ neben der Datenbank:
+-- <datei>.jpg (höchstens 1280 px) und <datei>_klein.jpg (Vorschau 320 px), ohne Zusatzdaten (EXIF/GPS).
+CREATE TABLE IF NOT EXISTS fotos (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lauf_id     INTEGER NOT NULL,
+    mitglied_id INTEGER NOT NULL,
+    datei       TEXT NOT NULL,             -- Name ohne Endung
+    breite      INTEGER NOT NULL,
+    hoehe       INTEGER NOT NULL,
+    angelegt    TEXT NOT NULL              -- UTC, ISO
+);
+CREATE INDEX IF NOT EXISTS fotos_lauf ON fotos (lauf_id);

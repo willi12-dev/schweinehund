@@ -145,8 +145,6 @@ def ich_aendern():
     ich = g.ich
     if "farbe" in d:
         ich = familie.farbe_aendern(con, ich, d.get("farbe"))
-    if "standard_sichtbarkeit" in d:
-        ich = familie.standard_aendern(con, ich, d.get("standard_sichtbarkeit"))
     con.commit()
     return jsonify(ok=True, ich=familie.fuer_app(ich))
 

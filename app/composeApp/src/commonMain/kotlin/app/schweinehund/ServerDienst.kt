@@ -11,6 +11,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
@@ -67,14 +68,19 @@ data class LaufAnzeige(
     val mitgliedName: String = "",
     val mitgliedFarbe: String = "#8A94A6",
     val eigen: Boolean = true,
-    val sichtbarkeit: String = "familie",
-    val streckePrivat: Boolean = false,
     val karte: KartenDaten? = null,
     val lk: String = "",
     val reaktionen: List<Reaktion> = emptyList(),
     val kommentare: List<Kommentar> = emptyList(),
     val kommentareAnzahl: Int = 0,
+    // REQ-013: bis zu drei Fotos zum Lauf
+    val fotos: List<Foto> = emptyList(),
 )
+
+/** REQ-013: ein Foto zum Lauf. url/vorschau sind Pfade auf dem Server (mit Schlüssel abrufen). */
+data class Foto(val id: Long, val url: String, val vorschau: String, val breite: Int, val hoehe: Int)
+
+const val MAX_FOTOS = 3
 
 /** REQ-006: Reaktion an einem Lauf (z. B. 🔥 ×2, ich = selbst gesetzt). */
 data class Reaktion(val emoji: String, val anzahl: Int, val ich: Boolean, val namen: List<String>)
@@ -160,7 +166,6 @@ data class Mitglied(
     val letzterLauf: String? = null,
     val kmWoche: String = "0",
     val laeufeWoche: Int = 0,
-    val standardSichtbarkeit: String = "familie",
 ) {
     val istVerwalter: Boolean get() = rolle == "verwalter"
 }
@@ -228,12 +233,11 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     mitgliedName = (obj["mitglied"] as? JsonObject)?.get("name").text() ?: "",
     mitgliedFarbe = (obj["mitglied"] as? JsonObject)?.get("farbe").text() ?: "#8A94A6",
     eigen = (obj["eigen"] as? JsonPrimitive)?.booleanOrNull ?: true,
-    sichtbarkeit = obj["sichtbarkeit"].text() ?: "familie",
-    streckePrivat = (obj["strecke_privat"] as? JsonPrimitive)?.booleanOrNull ?: false,
     lk = obj["lk"].text() ?: "",
     reaktionen = reaktionenLesen(obj["reaktionen"]),
     kommentare = kommentareLesen(obj["kommentare"]),
     kommentareAnzahl = (obj["kommentare_anzahl"] as? JsonPrimitive)?.intOrNull ?: 0,
+    fotos = fotosLesen(obj["fotos"]),
     karte = (obj["karte"] as? JsonObject)?.let { k ->
         KartenDaten(
             punkte = (k["punkte"] as? JsonArray)?.mapNotNull { p ->
@@ -252,6 +256,13 @@ fun laufLesen(obj: JsonObject): LaufAnzeige = LaufAnzeige(
     },
 )
 
+fun fotosLesen(e: JsonElement?): List<Foto> = (e as? JsonArray)?.mapNotNull { f ->
+    val o = f as? JsonObject ?: return@mapNotNull null
+    val id = (o["id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
+    Foto(id, o["url"].text() ?: "/api/laeufe/fotos/$id", o["vorschau"].text() ?: "/api/laeufe/fotos/$id?klein=1",
+        (o["breite"] as? JsonPrimitive)?.intOrNull ?: 0, (o["hoehe"] as? JsonPrimitive)?.intOrNull ?: 0)
+} ?: emptyList()
+
 fun mitgliedLesen(obj: JsonObject): Mitglied {
     val letzter = obj["letzter_lauf"] as? JsonObject
     return Mitglied(
@@ -266,7 +277,6 @@ fun mitgliedLesen(obj: JsonObject): Mitglied {
         letzterLauf = letzter?.let { "${it["start_text"].text() ?: ""} · ${it["distanz_km"].text() ?: "–"} km" },
         kmWoche = obj["km_woche"].text() ?: "0",
         laeufeWoche = (obj["laeufe_woche"] as? JsonPrimitive)?.intOrNull ?: 0,
-        standardSichtbarkeit = obj["standard_sichtbarkeit"].text() ?: "familie",
     )
 }
 
@@ -473,8 +483,6 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
 
     suspend fun farbeAendern(farbe: String): Antwort<Mitglied> = ichAendern("farbe", farbe)
 
-    suspend fun standardSichtbarkeit(wert: String): Antwort<Mitglied> = ichAendern("standard_sichtbarkeit", wert)
-
     private suspend fun ichAendern(feld: String, wert: String): Antwort<Mitglied> = sicher {
         val (text, code) = client.post("$basis/api/ich") { json(this, buildJsonObject { put(feld, wert) }) }.text()
         auswerten(text, code) { mitgliedLesen(it["ich"]!!.jsonObject) }
@@ -565,11 +573,39 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         auswerten(text, code) { o -> o["laeufe"]!!.jsonArray.map { laufLesen(it.jsonObject) } }
     }
 
-    suspend fun sichtbarkeit(id: Long, wert: String): Antwort<LaufAnzeige> = sicher {
-        val (text, code) = client.post("$basis/api/laeufe/$id/sichtbarkeit") {
-            json(this, buildJsonObject { put("sichtbarkeit", wert) })
-        }.text()
+    /** REQ-013: Foto (fertiges JPEG) an einen eigenen Lauf hängen. Antwort: der Lauf mit allen Fotos. */
+    suspend fun fotoHochladen(laufId: Long, jpeg: ByteArray): Antwort<LaufAnzeige> = sicher {
+        val (text, code) = client.submitFormWithBinaryData(
+            url = "$basis/api/laeufe/$laufId/fotos",
+            block = { anmelden() },
+            formData = formData {
+                append("foto", jpeg, Headers.build {
+                    append(HttpHeaders.ContentType, "image/jpeg")
+                    append(HttpHeaders.ContentDisposition, "filename=\"foto.jpg\"")
+                })
+            },
+        ).text()
         auswerten(text, code) { laufLesen(it["lauf"]!!.jsonObject) }
+    }
+
+    suspend fun fotoLoeschen(foto: Foto): Antwort<LaufAnzeige> = sicher {
+        val (text, code) = client.delete("$basis${foto.url}") { anmelden() }.text()
+        auswerten(text, code) { laufLesen(it["lauf"]!!.jsonObject) }
+    }
+
+    private val bilder = mutableMapOf<String, ByteArray>()
+
+    /** Bild vom Server (mit Schlüssel). Bleibt im Speicher, solange die App läuft – Fotos ändern sich nie. */
+    suspend fun bild(pfad: String): ByteArray? {
+        bilder[pfad]?.let { return it }
+        return try {
+            val antwort = client.get("$basis$pfad") { anmelden() }
+            if (antwort.status.value != 200) null
+            else antwort.bodyAsBytes().also { if (bilder.size > 80) bilder.clear(); bilder[pfad] = it }
+        } catch (e: Exception) {
+            if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+            null
+        }
     }
 
     suspend fun loeschen(id: Long): Antwort<Boolean> = sicher {
@@ -626,15 +662,15 @@ class ServerDienst(private val basis: String, private val client: HttpClient = s
         vorschauLesen(text, code)
     }
 
-    suspend fun bestaetigen(entwurf: String, geraetId: String, pushToken: String?, sichtbarkeit: String? = null): Antwort<String> = sicher {
+    /** Antwort: Text für die Meldung und Nummer des gespeicherten Laufs (für Fotos von der Kontrollkarte). */
+    suspend fun bestaetigen(entwurf: String, geraetId: String, pushToken: String?): Antwort<Pair<String, Long?>> = sicher {
         val (text, code) = client.post("$basis/api/laeufe/bestaetigen") {
             json(this, buildJsonObject {
                 put("entwurf", entwurf); put("geraet_id", geraetId)
-                if (sichtbarkeit != null) put("sichtbarkeit", sichtbarkeit)
                 if (pushToken != null) put("push_token", pushToken)
             })
         }.text()
-        auswerten(text, code) { it["text"].text() ?: "Gespeichert." }
+        auswerten(text, code) { (it["text"].text() ?: "Gespeichert.") to (it["id"] as? JsonPrimitive)?.longOrNull }
     }
 
     suspend fun healthConnect(geraetId: String, sitzungen: List<HcSitzung>): Antwort<String> = sicher {
@@ -684,4 +720,9 @@ interface Plattform {
     fun teilen(text: String): Boolean
     /** Text in die Zwischenablage (Ausweg, falls Teilen nicht klappt). */
     fun kopieren(text: String)
+    /** REQ-013: Foto mit der Kamera (Frontkamera vorgewählt) oder aus der Galerie – fertig verkleinert als JPEG
+     *  (höchstens 1280 px, richtig gedreht, ohne Standort). null = abgebrochen. */
+    suspend fun fotoAufnehmen(kamera: Boolean): ByteArray?
+    /** Bilddaten (JPEG) für die Anzeige. */
+    fun bildAnzeigen(daten: ByteArray): androidx.compose.ui.graphics.ImageBitmap?
 }

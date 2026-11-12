@@ -6,6 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.net.Uri
+import androidx.compose.ui.graphics.asImageBitmap
+import java.io.ByteArrayOutputStream
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
@@ -47,6 +52,8 @@ class AndroidPlattform(
     private val context: Context,
     /** Startet den Erlaubnis-Dialog von Health Connect (MainActivity) und liefert die erteilten Rechte. */
     private val rechteAnfragen: suspend (Set<String>) -> Set<String>,
+    /** REQ-013: Kamera (true) oder Bildauswahl (false) starten (MainActivity); null = abgebrochen. */
+    private val bildHolen: suspend (Boolean) -> android.net.Uri? = { null },
 ) : Plattform {
 
     private val einstellungen = context.getSharedPreferences("schweinehund", Context.MODE_PRIVATE)
@@ -115,6 +122,15 @@ class AndroidPlattform(
         suspendCancellableCoroutine { k ->
             erkenner.process(bild).addOnCompleteListener { t -> k.resume(if (t.isSuccessful) t.result.text else "") }
         }
+
+    // ------------------------------------------------------------------ REQ-013: Fotos zum Lauf
+    override suspend fun fotoAufnehmen(kamera: Boolean): ByteArray? {
+        val uri = bildHolen(kamera) ?: return null
+        return withContext(Dispatchers.IO) { runCatching { fotoVerkleinern(context, uri) }.getOrNull() }
+    }
+
+    override fun bildAnzeigen(daten: ByteArray): androidx.compose.ui.graphics.ImageBitmap? =
+        BitmapFactory.decodeByteArray(daten, 0, daten.size)?.asImageBitmap()
 
     override suspend fun healthConnectVerfuegbar(): Boolean =
         HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
@@ -188,5 +204,33 @@ class Warten<T> {
     fun fertig(wert: T) {
         offen?.complete(wert)
         offen = null
+    }
+}
+
+/** REQ-013: Foto aus Kamera oder Galerie → JPEG mit höchstens 1280 px langer Seite, richtig gedreht.
+ *  Bitmap.compress schreibt keine EXIF-Daten – Standort und Kameramodell fallen weg (der Server prüft das zusätzlich). */
+fun fotoVerkleinern(context: Context, uri: Uri, maxSeite: Int = 1280): ByteArray? {
+    val aufloesung = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, aufloesung) } ?: return null
+    if (aufloesung.outWidth <= 0 || aufloesung.outHeight <= 0) return null
+    var stichprobe = 1
+    while (maxOf(aufloesung.outWidth, aufloesung.outHeight) / (stichprobe * 2) >= maxSeite) stichprobe *= 2
+    val roh = context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = stichprobe })
+    } ?: return null
+    val drehung = context.contentResolver.openInputStream(uri)?.use {
+        when (ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+    } ?: 0f
+    val faktor = minOf(1f, maxSeite.toFloat() / maxOf(roh.width, roh.height))
+    val matrix = Matrix().apply { postScale(faktor, faktor); postRotate(drehung) }
+    val fertig = Bitmap.createBitmap(roh, 0, 0, roh.width, roh.height, matrix, true)
+    return ByteArrayOutputStream().use { aus ->
+        fertig.compress(Bitmap.CompressFormat.JPEG, 85, aus)
+        aus.toByteArray()
     }
 }

@@ -11,7 +11,7 @@ Neue Änderung anlegen:
 """
 import os
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from kern.datenbank import SERVER_DIR, TZ, protokoll
 
@@ -104,6 +104,21 @@ def _schritt_10(con):
         con.execute("ALTER TABLE mitglieder ADD COLUMN chat_gelesen INTEGER NOT NULL DEFAULT 0")
 
 
+HORST_ALLES_SICHTBAR = ("Neu: Zu jedem Lauf passen jetzt bis zu drei Fotos – und „nur für mich“ gibt es nicht mehr. "
+                        "Ab sofort sieht die Familie alle Strecken. Horst findet das übergriffig.")
+
+
+def _schritt_11(con):
+    """v0.8.0 (REQ-013): Tabelle fotos (aus schema.sql); „nur für mich“ entfällt – alle Läufe für die Familie sichtbar."""
+    n = con.execute("UPDATE laeufe SET sichtbarkeit = 'familie' WHERE sichtbarkeit != 'familie'").rowcount
+    con.execute("UPDATE mitglieder SET standard_sichtbarkeit = 'familie'")
+    if n:
+        protokoll(con, "Sichtbarkeit aufgehoben", f"{n} Läufe jetzt für die Familie sichtbar")
+    if con.execute("SELECT 1 FROM mitglieder LIMIT 1").fetchone():
+        con.execute("INSERT INTO nachrichten (mitglied_id, text, lauf_id, zeit) VALUES (NULL, ?, NULL, ?)",
+                    (HORST_ALLES_SICHTBAR, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+
 # Indizes auf Spalten, die erst ein Schritt anlegt – laufen nach den Schritten (auch bei neuer Datenbank).
 NACHLAUF = "CREATE INDEX IF NOT EXISTS laeufe_mitglied_start ON laeufe (mitglied_id, start);"
 
@@ -119,6 +134,7 @@ SCHRITTE = [
     (8, "v0.4.0: Testdatensatz – Läufe dem eingeladenen Mitglied zuordnen", _schritt_8),
     (9, "v0.6.0: Sonntagsshow (REQ-005)", _schritt_9),
     (10, "v0.7.0: Chat, Reaktionen, Kommentare (REQ-006)", _schritt_10),
+    (11, "v0.8.0: Fotos zum Lauf, alle Läufe sichtbar (REQ-013)", _schritt_11),
 ]
 STAND = SCHRITTE[-1][0]
 

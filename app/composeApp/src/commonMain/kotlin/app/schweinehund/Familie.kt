@@ -367,7 +367,6 @@ fun IchSeite(
     beschaeftigt: Boolean,
     pushArten: Map<String, Boolean>,
     pushUmschalten: (String, Boolean) -> Unit,
-    standardWaehlen: (String) -> Unit,
     farbeWaehlen: (String) -> Unit,
     testPush: () -> Unit,
     abmelden: () -> Unit,
@@ -394,10 +393,6 @@ fun IchSeite(
                     )
                 }
             }
-        }
-        Karte {
-            Text("Neue Läufe", color = Farben.Tinte, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            SichtbarkeitWahl(ich.standardSichtbarkeit, !beschaeftigt, standardWaehlen)
         }
     }
     if (ich != null) PushEinstellungen(pushArten, !beschaeftigt, pushUmschalten)

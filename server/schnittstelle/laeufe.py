@@ -1,9 +1,9 @@
 """Läufe übernehmen und anzeigen (REQ-001) – seit REQ-002 nur für angemeldete Familienmitglieder."""
 import re
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, g, jsonify, request, send_file
 
-from kern import bildtext, chat, dateien, datenbank, laeufe, push
+from kern import bildtext, chat, dateien, datenbank, fotos, laeufe, push
 from schnittstelle.familie import angemeldet_noetig
 
 bp = Blueprint("laeufe", __name__, url_prefix="/api/laeufe")
@@ -51,7 +51,7 @@ def bestaetigen():
     daten = request.get_json(silent=True) or {}
     con = datenbank.db()
     stand = chat.vorher(con, g.ich)
-    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten), daten.get("sichtbarkeit"))
+    ergebnis = laeufe.bestaetigen(con, str(daten.get("entwurf", "")), _wem(daten))
     if ergebnis is None:
         return _fehler("Die Vorschau ist abgelaufen – bitte die Datei noch einmal teilen.", 410)
     lauf_id, neu = ergebnis
@@ -105,19 +105,48 @@ def familie_liste():
     return jsonify(ok=True, laeufe=laeufe.familie_liste(datenbank.db(), g.ich["id"]))
 
 
-_STAND = {"fehlt": ("Lauf nicht gefunden.", 404), "fremd": ("Das ist nicht dein Lauf.", 403),
-          "ungueltig": ("Unbekannte Sichtbarkeit.", 400)}
+_STAND = {"fehlt": ("Lauf nicht gefunden.", 404), "fremd": ("Das ist nicht dein Lauf.", 403)}
 
 
-@bp.post("/<int:lauf_id>/sichtbarkeit")
+# ------------------------------------------------------------------ Fotos zum Lauf (REQ-013)
+@bp.post("/<int:lauf_id>/fotos")
 @angemeldet_noetig
-def sichtbarkeit(lauf_id):
+def foto_hochladen(lauf_id):
+    """Formularfeld „foto“. Antwort: der Lauf mit allen Fotos."""
+    datei = request.files.get("foto")
     con = datenbank.db()
-    stand = laeufe.sichtbarkeit_setzen(con, lauf_id, g.ich["id"], (request.get_json(silent=True) or {}).get("sichtbarkeit"))
-    if stand != "ok":
-        return _fehler(*_STAND[stand])
+    try:
+        fotos.hochladen(con, g.ich, lauf_id, datei.read() if datei else b"")
+    except fotos.FotoFehler as e:
+        return _fehler(str(e), e.code)
+    datenbank.protokoll(con, "Foto hochgeladen", f"Lauf {lauf_id}")
     con.commit()
     return jsonify(ok=True, lauf=laeufe.detail(con, lauf_id, g.ich["id"]))
+
+
+@bp.get("/fotos/<int:foto_id>")
+@angemeldet_noetig
+def foto(foto_id):
+    pfad = fotos.datei(datenbank.db(), foto_id, klein=request.args.get("klein") == "1")
+    if pfad is None:
+        return _fehler("Foto nicht gefunden.", 404)
+    antwort = send_file(pfad, mimetype="image/jpeg", max_age=7 * 24 * 3600)
+    antwort.headers["Cache-Control"] = "private, max-age=604800, immutable"
+    return antwort
+
+
+@bp.delete("/fotos/<int:foto_id>")
+@angemeldet_noetig
+def foto_loeschen(foto_id):
+    con = datenbank.db()
+    z = con.execute("SELECT lauf_id FROM fotos WHERE id = ?", (foto_id,)).fetchone()
+    try:
+        fotos.loeschen(con, g.ich, foto_id)
+    except fotos.FotoFehler as e:
+        return _fehler(str(e), e.code)
+    datenbank.protokoll(con, "Foto gelöscht", f"Lauf {z['lauf_id']}")
+    con.commit()
+    return jsonify(ok=True, lauf=laeufe.detail(con, z["lauf_id"], g.ich["id"]))
 
 
 @bp.delete("/<int:lauf_id>")

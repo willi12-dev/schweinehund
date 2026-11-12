@@ -1,4 +1,4 @@
-"""REQ-003: Familien-Läufe, Karte und Sichtbarkeit pro Lauf."""
+"""REQ-003: Familien-Läufe und Karte (Sichtbarkeit pro Lauf seit REQ-013 entfallen)."""
 import io
 import os
 
@@ -59,42 +59,25 @@ def test_familie_sieht_laeufe_aller():
     a_id = liste[1]["mitglied"]["id"]
     assert [l["distanz_km"] for l in b.get(f"/api/laeufe?mitglied={a_id}").get_json()["laeufe"]] == ["4,93"]
     detail = b.get(f"/api/laeufe/{liste[1]['id']}").get_json()["lauf"]
-    assert detail["hat_strecke"] and len(detail["karte"]["km"]) == 4 and detail["strecke_privat"] is False
+    assert detail["hat_strecke"] and len(detail["karte"]["km"]) == 4
 
 
-def test_nur_fuer_mich_versteckt_die_strecke():
+def test_familie_sieht_immer_die_strecke():
+    """REQ-013: „nur für mich“ gibt es nicht mehr – auch ein alter Wunsch „ich“ beim Speichern wird ignoriert."""
     _, a, _ = angemeldeter_server()
     b = _zweites_mitglied(a)
     lauf_id = _teilen_und_speichern(a, "huawei_lauf_b.tcx", sichtbarkeit="ich")
     fremd = b.get(f"/api/laeufe/{lauf_id}").get_json()["lauf"]
-    assert fremd["distanz_km"] == "4,93" and fremd["strecke_privat"] and not fremd["hat_strecke"]
-    assert "karte" not in fremd and "linie" not in fremd
-    eigen = a.get(f"/api/laeufe/{lauf_id}").get_json()["lauf"]
-    assert eigen["hat_strecke"] and eigen["karte"]["punkte"] and eigen["sichtbarkeit"] == "ich"
-    # zurück auf Familie
-    assert a.post(f"/api/laeufe/{lauf_id}/sichtbarkeit", json={"sichtbarkeit": "familie"}).status_code == 200
-    assert b.get(f"/api/laeufe/{lauf_id}").get_json()["lauf"]["karte"]["punkte"]
+    assert fremd["hat_strecke"] and fremd["karte"]["punkte"] and "sichtbarkeit" not in fremd
+    assert a.post(f"/api/laeufe/{lauf_id}/sichtbarkeit", json={"sichtbarkeit": "ich"}).status_code in (404, 405)
+    assert "standard_sichtbarkeit" not in a.post("/api/ich", json={"standard_sichtbarkeit": "ich"}).get_json()["ich"]
 
 
-def test_nur_eigene_laeufe_aendern_und_loeschen():
+def test_nur_eigene_laeufe_loeschen():
     _, a, _ = angemeldeter_server()
     b = _zweites_mitglied(a)
     lauf_id = _teilen_und_speichern(a, "huawei_lauf_b.tcx")
-    assert b.post(f"/api/laeufe/{lauf_id}/sichtbarkeit", json={"sichtbarkeit": "ich"}).status_code == 403
-    assert a.post(f"/api/laeufe/{lauf_id}/sichtbarkeit", json={"sichtbarkeit": "geheim"}).status_code == 400
     assert b.delete(f"/api/laeufe/{lauf_id}").status_code == 403
     assert a.delete("/api/laeufe/999").status_code == 404
     assert a.delete(f"/api/laeufe/{lauf_id}").status_code == 200
     assert a.get("/api/laeufe/familie").get_json()["laeufe"] == []
-
-
-def test_standard_sichtbarkeit_fuer_neue_laeufe():
-    _, a, _ = angemeldeter_server()
-    r = a.post("/api/ich", json={"standard_sichtbarkeit": "ich"}).get_json()
-    assert r["ich"]["standard_sichtbarkeit"] == "ich"
-    assert a.post("/api/ich", json={"standard_sichtbarkeit": "alle"}).status_code == 400
-    lauf_id = _teilen_und_speichern(a, "huawei_lauf_b.tcx")
-    assert a.get(f"/api/laeufe/{lauf_id}").get_json()["lauf"]["sichtbarkeit"] == "ich"
-    # ausdrücklich beim Speichern gewählt schlägt den Standard
-    lauf2 = _teilen_und_speichern(a, "huawei_lauf_a.gpx", sichtbarkeit="familie")
-    assert a.get(f"/api/laeufe/{lauf2}").get_json()["lauf"]["sichtbarkeit"] == "familie"

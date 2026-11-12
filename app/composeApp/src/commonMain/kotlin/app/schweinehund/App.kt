@@ -127,6 +127,8 @@ fun App(
     var ungelesen by remember { mutableStateOf(0) }
     val hauptScroll = rememberScrollState()
     var einladungFuer by remember { mutableStateOf<Pair<String, Einladung>?>(null) }   // zuletzt erstellte Einladung
+    var vollbild by remember { mutableStateOf<Int?>(null) }                           // REQ-013: offenes Foto im Lauf
+    val bildLader = remember { BildLader(server, plattform) }
     val scope = rememberCoroutineScope()
 
     fun abmelden(grund: String) {
@@ -240,6 +242,7 @@ fun App(
     }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Farben.Orange, background = Farben.Grund, onSurface = Farben.Tinte)) {
+      MitBildLader(bildLader) {
         Box(Modifier.fillMaxSize().background(Farben.Grund).safeDrawingPadding()) {
             val offen = detail
             when {
@@ -250,7 +253,7 @@ fun App(
                 )
                 offeneShow != null -> ShowSeite(offeneShow!!) { offeneShow = null }
                 offen != null -> LaufDetail(
-                    lauf = offen, beschaeftigt = beschaeftigt, zurueck = { detail = null },
+                    lauf = offen, beschaeftigt = beschaeftigt, zurueck = { detail = null; vollbild = null },
                     reagieren = { emoji ->
                         scope.launch {
                             val id = offen.id ?: return@launch
@@ -268,13 +271,18 @@ fun App(
                             if (pruefen(server.kommentarLoeschen(k.id)) == true) detail = offen.copy(kommentare = offen.kommentare.filter { it.id != k.id })
                         }
                     },
-                    sichtbarkeit = { wert ->
+                    fotoHinzufuegen = { kamera ->
                         scope.launch {
                             val id = offen.id ?: return@launch
-                            pruefen(server.sichtbarkeit(id, wert))?.let { detail = it }
+                            val jpeg = plattform.fotoAufnehmen(kamera) ?: return@launch
+                            beschaeftigt = true
+                            meldung = ""
+                            pruefen(server.fotoHochladen(id, jpeg))?.let { detail = it }
+                            beschaeftigt = false
                             neuLaden()
                         }
                     },
+                    fotoOeffnen = { vollbild = it },
                     loeschen = {
                         scope.launch {
                             val id = offen.id ?: return@launch
@@ -435,9 +443,6 @@ fun App(
                                         pruefen(server.pushArt(art, an))?.let { arten -> familie = familie?.copy(pushArten = arten) }
                                     }
                                 },
-                                standardWaehlen = { wert ->
-                                    scope.launch { pruefen(server.standardSichtbarkeit(wert)); neuLaden() }
-                                },
                                 farbeWaehlen = { farbe ->
                                     scope.launch { pruefen(server.farbeAendern(farbe)); neuLaden() }
                                 },
@@ -465,12 +470,20 @@ fun App(
             if (oben != null && schluessel != null) {
                 Kontrollkarte(
                     eintrag = oben, appVersion = appVersion, beschaeftigt = beschaeftigt,
-                    standard = familie?.ich?.standardSichtbarkeit ?: "familie",
-                    speichern = { v, sicht ->
+                    fotoAufnehmen = { kamera -> plattform.fotoAufnehmen(kamera) },
+                    speichern = { v, fotos ->
                         scope.launch {
                             beschaeftigt = true
-                            val a = server.bestaetigen(v.entwurf, geraetId, plattform.pushToken(), sicht)
-                            pruefen(a)?.let { meldung = it }
+                            val a = server.bestaetigen(v.entwurf, geraetId, plattform.pushToken())
+                            pruefen(a)?.let { (text, id) ->
+                                meldung = text
+                                // REQ-013: Fotos von der Kontrollkarte hängen sich an den gespeicherten Lauf
+                                if (id != null && fotos.isNotEmpty()) {
+                                    val fehler = fotos.mapNotNull { server.fotoHochladen(id, it).fehler }
+                                    meldung = if (fehler.isEmpty()) "$text ${if (fotos.size == 1) "Foto ist" else "Fotos sind"} dabei."
+                                    else "$text Foto ging nicht: ${fehler.first()}"
+                                }
+                            }
                             warteschlange = warteschlange.drop(1)
                             neuLaden()
                             beschaeftigt = false
@@ -479,7 +492,25 @@ fun App(
                     verwerfen = { warteschlange = warteschlange.drop(1) },
                 )
             }
+
+            val fotoIndex = vollbild
+            val fotoLauf = detail
+            if (fotoIndex != null && fotoLauf != null) {
+                FotoVollbild(
+                    fotos = fotoLauf.fotos, start = fotoIndex, eigen = fotoLauf.eigen, beschaeftigt = beschaeftigt,
+                    loeschen = { foto ->
+                        scope.launch {
+                            beschaeftigt = true
+                            pruefen(server.fotoLoeschen(foto))?.let { detail = it; vollbild = null }
+                            beschaeftigt = false
+                            neuLaden()
+                        }
+                    },
+                    schliessen = { vollbild = null },
+                )
+            }
         }
+      }
     }
 }
 
@@ -574,10 +605,11 @@ fun Karte(dunkel: Boolean = false, inhalt: @Composable () -> Unit) {
 
 @Composable
 private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -> Unit) {
-    Column(
+    Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Farben.Weiss).clickable(onClick = oeffnen).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (mitName && lauf.mitgliedName.isNotBlank()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).clip(CircleShape).background(farbe(lauf.mitgliedFarbe)))
@@ -592,16 +624,16 @@ private fun LaufZeile(lauf: LaufAnzeige, mitName: Boolean = false, oeffnen: () -
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }, lauf.puls?.let { "♥ $it" },
             lauf.lk.takeIf { it.isNotBlank() }?.let { "$it LK" }).joinToString("  ·  "),
             color = Farben.Tinte, fontSize = 14.sp)
-        val strecke = when {
-            lauf.hatStrecke && lauf.eigen && lauf.sichtbarkeit == "ich" -> "  ·  Strecke nur für dich"
-            lauf.hatStrecke -> "  ·  mit Strecke"
-            lauf.streckePrivat -> "  ·  Strecke privat"
-            else -> ""
-        }
+        val strecke = if (lauf.hatStrecke) "  ·  mit Strecke" else ""
         Text(lauf.quellen.joinToString(" + ") { QUELLEN_TEXT[it] ?: it } + strecke, color = Farben.Grau, fontSize = 12.sp)
         val echo = lauf.reaktionen.joinToString("  ") { "${it.emoji}${if (it.anzahl > 1) it.anzahl else ""}" } +
             if (lauf.kommentareAnzahl > 0) "   💬 ${lauf.kommentareAnzahl}" else ""
         if (echo.isNotBlank()) Text(echo.trim(), fontSize = 14.sp, color = Farben.Tinte)
+    }
+    if (lauf.fotos.isNotEmpty()) {
+        Spacer(Modifier.size(10.dp))
+        FotoVorschauen(lauf.fotos)
+    }
     }
 }
 
@@ -610,11 +642,12 @@ private fun Kontrollkarte(
     eintrag: Wartend,
     appVersion: String,
     beschaeftigt: Boolean,
-    standard: String,
-    speichern: (Vorschau, String) -> Unit,
+    fotoAufnehmen: suspend (Boolean) -> ByteArray?,
+    speichern: (Vorschau, List<ByteArray>) -> Unit,
     verwerfen: () -> Unit,
 ) {
-    var sicht by remember(eintrag) { mutableStateOf(standard) }
+    var fotos by remember(eintrag) { mutableStateOf<List<ByteArray>>(emptyList()) }
+    val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize().background(Farben.Schleier).clickable(enabled = false) {}, contentAlignment = Alignment.BottomCenter) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(Farben.Weiss).padding(22.dp),
@@ -634,12 +667,14 @@ private fun Kontrollkarte(
             Text(listOfNotNull(l.startText, l.tempo, l.anstiegM?.let { "↑ $it m" }, l.puls?.let { "Puls $it" }, l.kadenz?.let { "Kadenz $it" })
                 .joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
             if (l.linie.size >= 2) Strecke(l.linie, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)).background(Farben.Grund))
-            if (l.linie.size >= 2) SichtbarkeitWahl(sicht, !beschaeftigt) { sicht = it }
+            FotoAuswahlKarte(fotos, !beschaeftigt,
+                hinzufuegen = { kamera -> scope.launch { fotoAufnehmen(kamera)?.let { if (fotos.size < MAX_FOTOS) fotos = fotos + it } } },
+                entfernen = { i -> fotos = fotos.filterIndexed { j, _ -> j != i } })
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = verwerfen, enabled = !beschaeftigt, modifier = Modifier.weight(1f).height(50.dp)) {
                     Text("Verwerfen", color = Farben.Tinte)
                 }
-                Button(onClick = { speichern(v, sicht) }, enabled = !beschaeftigt,
+                Button(onClick = { speichern(v, fotos) }, enabled = !beschaeftigt,
                     modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Farben.Orange)) { Text("Speichern", fontWeight = FontWeight.Bold) }
             }
@@ -658,19 +693,6 @@ fun Auswahl(text: String, gewaehlt: Boolean, farbe: Color = Farben.Schiefer, akt
 }
 
 @Composable
-fun SichtbarkeitWahl(wert: String, aktiv: Boolean, waehlen: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Wer sieht die Strecke?", color = Farben.Grau, fontSize = 13.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Auswahl("Familie", wert == "familie", aktiv = aktiv) { waehlen("familie") }
-            Auswahl("Nur ich", wert == "ich", aktiv = aktiv) { waehlen("ich") }
-        }
-        if (wert == "ich") Text("Die Familie sieht Kilometer und Zeit, aber keine Karte. Der Lauf zählt trotzdem.",
-            color = Farben.Grau, fontSize = 12.sp)
-    }
-}
-
-@Composable
 private fun LaufDetail(
     lauf: LaufAnzeige,
     beschaeftigt: Boolean,
@@ -678,7 +700,8 @@ private fun LaufDetail(
     reagieren: (String) -> Unit,
     kommentieren: (String) -> Unit,
     kommentarLoeschen: (Kommentar) -> Unit,
-    sichtbarkeit: (String) -> Unit,
+    fotoHinzufuegen: (kamera: Boolean) -> Unit,
+    fotoOeffnen: (Int) -> Unit,
     loeschen: () -> Unit,
 ) {
     var nachfragen by remember(lauf.id) { mutableStateOf(false) }
@@ -703,6 +726,7 @@ private fun LaufDetail(
         Text(listOfNotNull(lauf.dauer, lauf.tempo, lauf.anstiegM?.let { "↑ $it m" }).joinToString("  ·  "), color = Farben.Tinte, fontSize = 16.sp)
         val extra = listOfNotNull(lauf.puls?.let { "Puls Ø $it" }, lauf.kadenz?.let { "Kadenz $it" }, lauf.schritte?.let { "${tausender(it)} Schritte" })
         if (extra.isNotEmpty()) Text(extra.joinToString("  ·  "), color = Farben.Grau, fontSize = 14.sp)
+        FotoStreifen(lauf, beschaeftigt, fotoHinzufuegen, fotoOeffnen)
         val karte = lauf.karte
         when {
             karte != null && karte.punkte.size >= 2 -> {
@@ -711,8 +735,6 @@ private fun LaufDetail(
             }
             lauf.linie.size >= 2 ->
                 Strecke(lauf.linie, Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(22.dp)).background(Farben.Weiss))
-            lauf.streckePrivat -> Text("${lauf.mitgliedName} zeigt die Strecke dieses Laufs nur sich selbst.",
-                color = Farben.Grau, fontSize = 14.sp)
             else -> Text("Für diesen Lauf gibt es noch keine Strecke. Teile die GPX-Datei, dann erscheint sie hier.",
                 color = Farben.Grau, fontSize = 14.sp)
         }
@@ -728,7 +750,6 @@ private fun LaufDetail(
         ReaktionenLeiste(lauf.reaktionen, !beschaeftigt, reagieren)
         KommentareBereich(lauf.kommentare, !beschaeftigt, kommentieren, kommentarLoeschen)
         if (lauf.eigen) {
-            if (lauf.hatStrecke) SichtbarkeitWahl(lauf.sichtbarkeit, !beschaeftigt, sichtbarkeit)
             if (!nachfragen) {
                 TextButton(onClick = { nachfragen = true }) { Text("Lauf löschen", color = Farben.Grau) }
             } else {
